@@ -72,6 +72,24 @@ export class NPCEntity extends Entity {
 			const head = new THREE.Mesh(headGeometry, headMaterial);
 			head.position.y = 1.0;
 			this.mesh.add(head);
+
+			// Add eyes (small black spheres)
+			const eyeMaterial = new THREE.MeshStandardMaterial({
+				color: 0x000000,
+				roughness: 0.5,
+				metalness: 0.5,
+			});
+			const eyeGeometry = new THREE.SphereGeometry(0.04, 8, 8);
+
+			// Left eye
+			const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+			leftEye.position.set(-0.1, 1.05, 0.2);
+			this.mesh.add(leftEye);
+
+			// Right eye
+			const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+			rightEye.position.set(0.1, 1.05, 0.2);
+			this.mesh.add(rightEye);
 		} else if (this.profession === NPCProfession.GUARD) {
 			// Create rook-like shape
 			// Base
@@ -122,6 +140,24 @@ export class NPCEntity extends Entity {
 			}
 
 			this.mesh.add(crownGroup);
+
+			// Add eyes (small black spheres)
+			const eyeMaterial = new THREE.MeshStandardMaterial({
+				color: 0x000000,
+				roughness: 0.5,
+				metalness: 0.5,
+			});
+			const eyeGeometry = new THREE.SphereGeometry(0.04, 8, 8);
+
+			// Left eye
+			const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+			leftEye.position.set(-0.12, 0.9, 0.25);
+			this.mesh.add(leftEye);
+
+			// Right eye
+			const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+			rightEye.position.set(0.12, 0.9, 0.25);
+			this.mesh.add(rightEye);
 		}
 
 		// Position the mesh and set up shadows

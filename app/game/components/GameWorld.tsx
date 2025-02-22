@@ -706,6 +706,24 @@ export default function GameWorld() {
     upperBody.position.y = 1.25;
     playerGroup.add(upperBody);
 
+    // Add cute eyes (slightly larger than NPC eyes)
+    const eyeMaterial = new THREE.MeshStandardMaterial({
+      color: 0x000000,
+      roughness: 0.3,  // More glossy than NPC eyes
+      metalness: 0.7   // More metallic for a shiny look
+    });
+    const eyeGeometry = new THREE.SphereGeometry(0.05, 12, 12);  // Larger and smoother than NPC eyes
+
+    // Left eye
+    const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+    leftEye.position.set(-0.12, 1.3, 0.22);
+    playerGroup.add(leftEye);
+
+    // Right eye
+    const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+    rightEye.position.set(0.12, 1.3, 0.22);
+    playerGroup.add(rightEye);
+
     // Crown base - slightly smaller
     const crownBaseGeometry = new THREE.CylinderGeometry(0.35, 0.3, 0.15, 16);
     const crownBase = new THREE.Mesh(crownBaseGeometry, baseMaterial);
@@ -730,12 +748,12 @@ export default function GameWorld() {
     // Center cross - adjusted position
     const crossVerticalGeometry = new THREE.BoxGeometry(0.07, 0.3, 0.07);
     const crossVertical = new THREE.Mesh(crossVerticalGeometry, baseMaterial);
-    crossVertical.position.y = 1.75;
+    crossVertical.position.y = 1.65;
     playerGroup.add(crossVertical);
 
     const crossHorizontalGeometry = new THREE.BoxGeometry(0.18, 0.07, 0.07);
     const crossHorizontal = new THREE.Mesh(crossHorizontalGeometry, baseMaterial);
-    crossHorizontal.position.y = 1.8;
+    crossHorizontal.position.y = 1.7;
     playerGroup.add(crossHorizontal);
 
     // Set up the mesh group
