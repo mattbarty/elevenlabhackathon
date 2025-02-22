@@ -39,8 +39,9 @@ export class NPCEntity extends Entity {
 		isDead: false,
 		deathTime: 0,
 		deathAnimationComplete: false,
-		circlingClockwise: Math.random() < 0.5, // Random initial direction
+		circlingClockwise: Math.random() < 0.5,
 		lastDirectionChangeTime: 0,
+		isRunning: false,
 	};
 	private mesh!: THREE.Group;
 	private baseMesh!: THREE.Group;
@@ -316,8 +317,12 @@ export class NPCEntity extends Entity {
 		}
 	}
 
-	public MoveTo(target: THREE.Vector3 | Entity): void {
+	public MoveTo(
+		target: THREE.Vector3 | Entity,
+		shouldRun: boolean = false
+	): void {
 		this.state.isMoving = true;
+		this.state.isRunning = shouldRun;
 		if (target instanceof THREE.Vector3) {
 			this.state.targetPosition = target.clone();
 			this.state.targetEntity = undefined;
@@ -690,17 +695,17 @@ export class NPCEntity extends Entity {
 				const optimalDistance = this.combatStats.attackRange * 0.8;
 
 				if (distance > this.combatStats.attackRange * 1.2) {
-					// Too far - move directly towards target
+					// Too far - move directly towards target at running speed
 					const moveDir = target
 						.getTransform()
 						.position.clone()
 						.sub(this.transform.position)
 						.normalize()
-						.multiplyScalar(deltaTime * 3); // Faster approach speed
+						.multiplyScalar(deltaTime * this.combatStats.runSpeed);
 					this.transform.position.add(moveDir);
 				} else {
-					// In combat range - circle around target
-					const currentTime = Date.now() / 1000; // Convert to seconds
+					// In combat range - circle around target at walking speed
+					const currentTime = Date.now() / 1000;
 					if (
 						currentTime - this.state.lastDirectionChangeTime >=
 						NPCEntity.DIRECTION_CHANGE_INTERVAL
@@ -722,11 +727,11 @@ export class NPCEntity extends Entity {
 						targetPos.z + Math.sin(this.circleAngle) * optimalDistance
 					);
 
-					// Move towards the circle position
+					// Move towards the circle position at walking speed
 					const moveDir = circlePos
 						.sub(this.transform.position)
 						.normalize()
-						.multiplyScalar(deltaTime * 2);
+						.multiplyScalar(deltaTime * this.combatStats.walkSpeed);
 					this.transform.position.add(moveDir);
 				}
 
@@ -772,10 +777,12 @@ export class NPCEntity extends Entity {
 					const distance = direction.length();
 
 					if (distance > 0.1) {
-						// Move towards target with smooth acceleration
+						// Move towards target with appropriate speed
 						direction.normalize();
-						const moveSpeed = 2 * deltaTime;
-						const movement = direction.multiplyScalar(moveSpeed);
+						const currentSpeed = this.state.isRunning
+							? this.combatStats.runSpeed
+							: this.combatStats.walkSpeed;
+						const movement = direction.multiplyScalar(deltaTime * currentSpeed);
 
 						// Apply movement and collision correction
 						this.transform.position.add(movement);
@@ -786,6 +793,7 @@ export class NPCEntity extends Entity {
 						this.mesh.lookAt(this.state.targetPosition);
 					} else {
 						this.state.isMoving = false;
+						this.state.isRunning = false;
 						this.state.targetPosition = undefined;
 						this.state.targetEntity = undefined;
 					}

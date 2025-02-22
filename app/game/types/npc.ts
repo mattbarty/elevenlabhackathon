@@ -11,6 +11,8 @@ export interface NPCCombatStats {
 	attackRange: number;
 	attackInterval: number;
 	knockbackForce: number;
+	walkSpeed: number; // Base movement speed
+	runSpeed: number; // Speed when running or pursuing in combat
 }
 
 export const DEFAULT_COMBAT_STATS: Record<NPCProfession, NPCCombatStats> = {
@@ -19,12 +21,16 @@ export const DEFAULT_COMBAT_STATS: Record<NPCProfession, NPCCombatStats> = {
 		attackRange: 1.5,
 		attackInterval: 2000, // 2 seconds
 		knockbackForce: 0.5,
+		walkSpeed: 2,
+		runSpeed: 4,
 	},
 	[NPCProfession.GUARD]: {
 		damage: 25,
 		attackRange: 2,
 		attackInterval: 1500, // 1.5 seconds
 		knockbackForce: 1,
+		walkSpeed: 2.5,
+		runSpeed: 5,
 	},
 };
 
@@ -55,4 +61,5 @@ export interface NPCState {
 	deathAnimationComplete: boolean;
 	circlingClockwise: boolean;
 	lastDirectionChangeTime: number;
+	isRunning: boolean;
 }
