@@ -89,8 +89,15 @@ export const NPCCommandDebug: React.FC<NPCCommandDebugProps> = ({ onClose }) => 
         throw new Error(gptResult.error || 'Failed to interpret command');
       }
 
-      // Execute each interpreted command
-      for (const command of gptResult.commands) {
+      // Execute commands sequentially
+      const executeCommands = async (commands: Command[], currentIndex: number = 0) => {
+        if (currentIndex >= commands.length) return;
+
+        const command = commands[currentIndex];
+        const waitForNextCommand = () => {
+          setTimeout(() => executeCommands(commands, currentIndex + 1), 500);
+        };
+
         // Execute command directly on NPC
         switch (command.action) {
           case ActionType.MOVE:
@@ -101,6 +108,15 @@ export const NPCCommandDebug: React.FC<NPCCommandDebugProps> = ({ onClose }) => 
                 new THREE.Vector3(command.target.x, 0, command.target.z),
                 command.action === ActionType.RUN
               );
+              // Wait for NPC to get close to target before next command
+              const checkPosition = setInterval(() => {
+                const distance = selectedNPCEntity.getTransform().position
+                  .distanceTo(new THREE.Vector3(command.target!.x, 0, command.target!.z));
+                if (distance < 1) {
+                  clearInterval(checkPosition);
+                  waitForNextCommand();
+                }
+              }, 100);
             } else if (command.target?.type === TargetType.NPC) {
               const targetNPC = entityManager.getAllEntities()
                 .find((entity): entity is NPCEntity =>
@@ -109,6 +125,8 @@ export const NPCCommandDebug: React.FC<NPCCommandDebugProps> = ({ onClose }) => 
                 );
               if (targetNPC) {
                 selectedNPCEntity.MoveTo(targetNPC);
+                // Wait a bit before next command when following an NPC
+                waitForNextCommand();
               }
             }
             break;
@@ -116,6 +134,8 @@ export const NPCCommandDebug: React.FC<NPCCommandDebugProps> = ({ onClose }) => 
           case ActionType.SPEAK:
             if (command.message) {
               selectedNPCEntity.Say(command.message);
+              // Wait for speech duration before next command
+              setTimeout(() => waitForNextCommand(), 3000);
             }
             break;
 
@@ -128,6 +148,8 @@ export const NPCCommandDebug: React.FC<NPCCommandDebugProps> = ({ onClose }) => 
                 );
               if (targetNPC) {
                 selectedNPCEntity.engageInCombat(targetNPC);
+                // Combat is ongoing, wait a bit before next command
+                setTimeout(() => waitForNextCommand(), 2000);
               }
             }
             break;
@@ -141,21 +163,28 @@ export const NPCCommandDebug: React.FC<NPCCommandDebugProps> = ({ onClose }) => 
                 );
               if (targetNPC) {
                 selectedNPCEntity.MoveTo(targetNPC);
+                // Following is ongoing, wait a bit before next command
+                setTimeout(() => waitForNextCommand(), 1000);
               }
             }
             break;
 
           case ActionType.STOP:
             selectedNPCEntity.Stop();
+            // Stop is immediate, proceed to next command
+            waitForNextCommand();
             break;
         }
-      }
+      };
+
+      // Start executing commands
+      executeCommands(gptResult.commands);
 
       // Add to command history
       setCommandHistory(prev => [{
         success: true,
         command: gptResult.commands[0],
-        message: gptResult.explanation,
+        message: `Executing ${gptResult.commands.length} commands: ${gptResult.explanation}`,
         executionId: Date.now().toString(),
       }, ...prev].slice(0, 10));
 
