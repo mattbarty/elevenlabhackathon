@@ -41,6 +41,22 @@ function createRock(): THREE.Mesh {
   return rock;
 }
 
+// Helper function to calculate the ideal camera position behind the player
+function calculateIdealCameraPosition(
+  playerPosition: THREE.Vector3,
+  playerRotation: THREE.Quaternion,
+  distance: number = 8,
+  height: number = 5
+): THREE.Vector3 {
+  // Get the backward direction from the player's rotation
+  const backward = new THREE.Vector3(0, 0, 1).applyQuaternion(playerRotation);
+  // Calculate the ideal position
+  return new THREE.Vector3()
+    .copy(playerPosition)
+    .add(backward.multiplyScalar(distance))
+    .add(new THREE.Vector3(0, height, 0));
+}
+
 export default function GameWorld() {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -48,8 +64,10 @@ export default function GameWorld() {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const playerRef = useRef<PlayerEntity | null>(null);
   const playerMeshRef = useRef<THREE.Mesh | null>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number>(0);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const lastPlayerPosition = useRef(new THREE.Vector3());
+  const isMoving = useRef(false);
 
   useEffect(() => {
     // Prevent double initialization
@@ -142,8 +160,8 @@ export default function GameWorld() {
     });
     playerRef.current = player;
 
-    // Create player mesh as connected cubes
-    const playerGeometry = new THREE.BoxGeometry(0.8, 0.4, 0.4);
+    // Create player mesh as a proper cube
+    const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
     const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x2c698d });
     const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
     playerMesh.position.copy(player.getTransform().position);
@@ -151,11 +169,19 @@ export default function GameWorld() {
     scene.add(playerMesh);
     playerMeshRef.current = playerMesh;
 
-    // Add orbit controls
+    // Add orbit controls with constraints
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
+    controls.minDistance = 5;
+    controls.maxDistance = 15;
+    controls.maxPolarAngle = Math.PI / 2;
     controlsRef.current = controls;
+
+    // Set initial camera position and store initial player position
+    camera.position.set(0, 8, 12);
+    controls.target.copy(player.getTransform().position);
+    lastPlayerPosition.current.copy(player.getTransform().position);
 
     // Animation loop
     let lastTime = 0;
@@ -163,13 +189,33 @@ export default function GameWorld() {
       const deltaTime = (time - lastTime) / 1000;
       lastTime = time;
 
-      if (playerRef.current) {
+      if (playerRef.current && playerMeshRef.current) {
         playerRef.current.update(deltaTime);
-        if (playerMeshRef.current) {
-          const transform = playerRef.current.getTransform();
-          playerMeshRef.current.position.copy(transform.position);
-          playerMeshRef.current.quaternion.copy(transform.rotation);
+        const transform = playerRef.current.getTransform();
+        playerMeshRef.current.position.copy(transform.position);
+        playerMeshRef.current.quaternion.copy(transform.rotation);
+
+        // Check if player is moving by comparing positions
+        const moveThreshold = 0.001;
+        isMoving.current = transform.position.distanceToSquared(lastPlayerPosition.current) > moveThreshold;
+
+        if (isMoving.current && controlsRef.current && cameraRef.current) {
+          // Calculate ideal camera position behind player
+          const idealPosition = calculateIdealCameraPosition(
+            transform.position,
+            transform.rotation
+          );
+
+          // Smoothly interpolate camera position
+          const cameraMoveSpeed = 2 * deltaTime;
+          cameraRef.current.position.lerp(idealPosition, cameraMoveSpeed);
+
+          // Update controls target
+          controlsRef.current.target.copy(transform.position);
         }
+
+        // Store current position for next frame
+        lastPlayerPosition.current.copy(transform.position);
       }
 
       if (controlsRef.current) {
