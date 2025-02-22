@@ -41,19 +41,97 @@ export class NPCEntity extends Entity {
 	private createVisuals(): void {
 		this.mesh = new THREE.Group();
 
-		// Create body (for now, a simple humanoid shape)
-		const bodyGeometry = new THREE.CapsuleGeometry(0.25, 0.5, 2, 8);
-		const bodyMaterial = new THREE.MeshStandardMaterial({
-			color: this.profession === NPCProfession.GUARD ? 0x4a6d8c : 0x8c6d4a,
-		});
-		const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-		body.position.y = 0.5;
-		this.mesh.add(body);
+		if (this.profession === NPCProfession.VILLAGER) {
+			// Create pawn-like shape
+			// Base
+			const baseGeometry = new THREE.CylinderGeometry(0.3, 0.4, 0.2, 16);
+			const baseMaterial = new THREE.MeshStandardMaterial({
+				color: 0x8c6d4a,
+				roughness: 0.7,
+			});
+			const base = new THREE.Mesh(baseGeometry, baseMaterial);
+			base.position.y = 0.1;
+			this.mesh.add(base);
 
-		// Position the mesh
+			// Body
+			const bodyGeometry = new THREE.CylinderGeometry(0.2, 0.3, 0.6, 16);
+			const bodyMaterial = new THREE.MeshStandardMaterial({
+				color: 0x8c6d4a,
+				roughness: 0.7,
+			});
+			const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+			body.position.y = 0.5;
+			this.mesh.add(body);
+
+			// Head (sphere)
+			const headGeometry = new THREE.SphereGeometry(0.25, 16, 16);
+			const headMaterial = new THREE.MeshStandardMaterial({
+				color: 0x8c6d4a,
+				roughness: 0.7,
+			});
+			const head = new THREE.Mesh(headGeometry, headMaterial);
+			head.position.y = 1.0;
+			this.mesh.add(head);
+		} else if (this.profession === NPCProfession.GUARD) {
+			// Create rook-like shape
+			// Base
+			const baseGeometry = new THREE.CylinderGeometry(0.35, 0.45, 0.2, 8);
+			const baseMaterial = new THREE.MeshStandardMaterial({
+				color: 0x4a6d8c,
+				roughness: 0.7,
+			});
+			const base = new THREE.Mesh(baseGeometry, baseMaterial);
+			base.position.y = 0.1;
+			this.mesh.add(base);
+
+			// Body
+			const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.35, 0.8, 8);
+			const bodyMaterial = new THREE.MeshStandardMaterial({
+				color: 0x4a6d8c,
+				roughness: 0.7,
+			});
+			const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+			body.position.y = 0.6;
+			this.mesh.add(body);
+
+			// Top crown
+			const crownGroup = new THREE.Group();
+			crownGroup.position.y = 1.1;
+
+			// Main crown cylinder
+			const crownBaseGeometry = new THREE.CylinderGeometry(0.4, 0.3, 0.2, 8);
+			const crownMaterial = new THREE.MeshStandardMaterial({
+				color: 0x4a6d8c,
+				roughness: 0.7,
+			});
+			const crownBase = new THREE.Mesh(crownBaseGeometry, crownMaterial);
+			crownGroup.add(crownBase);
+
+			// Create battlements (the distinctive rook top)
+			const numBattlements = 4;
+			for (let i = 0; i < numBattlements; i++) {
+				const angle = (i / numBattlements) * Math.PI * 2;
+				const battlementGeometry = new THREE.BoxGeometry(0.15, 0.2, 0.15);
+				const battlement = new THREE.Mesh(battlementGeometry, crownMaterial);
+				battlement.position.set(
+					Math.cos(angle) * 0.25,
+					0.2,
+					Math.sin(angle) * 0.25
+				);
+				crownGroup.add(battlement);
+			}
+
+			this.mesh.add(crownGroup);
+		}
+
+		// Position the mesh and set up shadows
 		this.mesh.position.copy(this.transform.position);
-		this.mesh.castShadow = true;
-		this.mesh.receiveShadow = true;
+		this.mesh.traverse((child) => {
+			if (child instanceof THREE.Mesh) {
+				child.castShadow = true;
+				child.receiveShadow = true;
+			}
+		});
 	}
 
 	private createNameplate(): void {
