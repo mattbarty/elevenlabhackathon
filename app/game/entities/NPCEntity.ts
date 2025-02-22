@@ -332,6 +332,15 @@ export class NPCEntity extends Entity {
 		}
 	}
 
+	public Stop(): void {
+		this.state.isMoving = false;
+		this.state.isRunning = false;
+		this.state.targetPosition = undefined;
+		this.state.targetEntity = undefined;
+		this.state.inCombat = false;
+		this.state.combatTarget = undefined;
+	}
+
 	public Say(message: string, duration: number = 3000): void {
 		// Clear any existing dialogue timeout
 		if (this.state.dialogueTimeout) {
