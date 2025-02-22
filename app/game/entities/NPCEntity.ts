@@ -2,18 +2,26 @@ import * as THREE from 'three';
 import { Entity } from '../core/Entity';
 import { NPCConfig, NPCProfession, NPCState } from '../types/npc';
 import { HealthComponent } from '../components/HealthComponent';
+import { HealthBarComponent } from '../components/HealthBarComponent';
 import { createPawnVisuals, createRookVisuals } from './ChessPieceVisuals';
 
 export class NPCEntity extends Entity {
 	private name: string;
 	private profession: NPCProfession;
 	private healthComponent: HealthComponent;
+	private healthBarComponent: HealthBarComponent;
 	private state: NPCState;
 	private mesh!: THREE.Group;
+	private baseMesh!: THREE.Group;
 	private nameplate!: THREE.Sprite;
 	private nameplateTexture!: THREE.Texture;
 	private nameplateCanvas!: HTMLCanvasElement;
 	private nameplateContext!: CanvasRenderingContext2D;
+	private speechBubble!: THREE.Sprite;
+	private speechBubbleTexture!: THREE.Texture;
+	private speechBubbleCanvas!: HTMLCanvasElement;
+	private speechBubbleContext!: CanvasRenderingContext2D;
+	private isTargeted: boolean = false;
 
 	constructor(config: NPCConfig) {
 		super({ position: config.position });
@@ -28,6 +36,10 @@ export class NPCEntity extends Entity {
 		});
 		this.healthComponent.setEntity(this);
 
+		// Initialize health bar component
+		this.healthBarComponent = new HealthBarComponent(this.healthComponent);
+		this.healthBarComponent.setEntity(this);
+
 		// Initialize state
 		this.state = {
 			isMoving: false,
@@ -37,10 +49,12 @@ export class NPCEntity extends Entity {
 		// Create visual representation
 		this.createVisuals();
 		this.createNameplate();
+		this.createSpeechBubble();
 	}
 
 	private createVisuals(): void {
 		this.mesh = new THREE.Group();
+		this.baseMesh = new THREE.Group();
 
 		// Create the appropriate chess piece based on profession
 		const visuals =
@@ -48,12 +62,13 @@ export class NPCEntity extends Entity {
 				? createPawnVisuals()
 				: createRookVisuals();
 
-		// Add the visuals to the mesh group
-		this.mesh.add(visuals);
+		// Add the visuals to the base mesh group
+		this.baseMesh.add(visuals);
+		this.mesh.add(this.baseMesh);
 
 		// Position the mesh and set up shadows
 		this.mesh.position.copy(this.transform.position);
-		this.mesh.traverse((child) => {
+		this.baseMesh.traverse((child) => {
 			if (child instanceof THREE.Mesh) {
 				child.castShadow = true;
 				child.receiveShadow = true;
@@ -113,10 +128,151 @@ export class NPCEntity extends Entity {
 		this.nameplateTexture.needsUpdate = true;
 	}
 
+	private createSpeechBubble(): void {
+		// Create canvas for speech bubble
+		this.speechBubbleCanvas = document.createElement('canvas');
+		this.speechBubbleCanvas.width = 512; // Larger canvas for better text quality
+		this.speechBubbleCanvas.height = 256;
+		this.speechBubbleContext = this.speechBubbleCanvas.getContext('2d')!;
+
+		// Create sprite material using canvas texture
+		this.speechBubbleTexture = new THREE.Texture(this.speechBubbleCanvas);
+		const spriteMaterial = new THREE.SpriteMaterial({
+			map: this.speechBubbleTexture,
+			depthTest: false,
+			transparent: true,
+		});
+		this.speechBubble = new THREE.Sprite(spriteMaterial);
+		this.speechBubble.scale.set(4, 2, 1); // Make it wider for text
+		this.speechBubble.position.y = 3; // Position above nameplate
+		this.speechBubble.visible = false; // Hide initially
+
+		// Add speech bubble to mesh
+		this.mesh.add(this.speechBubble);
+	}
+
+	private updateSpeechBubble(message: string): void {
+		const ctx = this.speechBubbleContext;
+		const canvas = this.speechBubbleCanvas;
+		const padding = 20;
+		const borderRadius = 20;
+
+		// Clear the canvas
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		// Set up text properties
+		ctx.font = '32px Arial';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+
+		// Measure text for bubble size
+		const maxWidth = canvas.width - padding * 4;
+		const words = message.split(' ');
+		let lines = [];
+		let currentLine = words[0];
+
+		// Word wrap
+		for (let i = 1; i < words.length; i++) {
+			const word = words[i];
+			const width = ctx.measureText(currentLine + ' ' + word).width;
+			if (width < maxWidth) {
+				currentLine += ' ' + word;
+			} else {
+				lines.push(currentLine);
+				currentLine = word;
+			}
+		}
+		lines.push(currentLine);
+
+		const lineHeight = 40;
+		const bubbleHeight = lines.length * lineHeight + padding * 2;
+		const bubbleWidth = maxWidth + padding * 2;
+		const startY = (canvas.height - bubbleHeight) / 2;
+
+		// Draw bubble background
+		ctx.fillStyle = 'white';
+		ctx.strokeStyle = 'black';
+		ctx.lineWidth = 4;
+
+		// Draw rounded rectangle for bubble
+		ctx.beginPath();
+		ctx.moveTo(padding + borderRadius, startY);
+		ctx.lineTo(padding + bubbleWidth - borderRadius, startY);
+		ctx.quadraticCurveTo(
+			padding + bubbleWidth,
+			startY,
+			padding + bubbleWidth,
+			startY + borderRadius
+		);
+		ctx.lineTo(padding + bubbleWidth, startY + bubbleHeight - borderRadius);
+		ctx.quadraticCurveTo(
+			padding + bubbleWidth,
+			startY + bubbleHeight,
+			padding + bubbleWidth - borderRadius,
+			startY + bubbleHeight
+		);
+
+		// Add tail to bubble
+		const tailWidth = 20;
+		const tailHeight = 40;
+		ctx.lineTo(canvas.width / 2 + tailWidth, startY + bubbleHeight);
+		ctx.lineTo(canvas.width / 2, startY + bubbleHeight + tailHeight);
+		ctx.lineTo(canvas.width / 2 - tailWidth, startY + bubbleHeight);
+
+		ctx.lineTo(padding + borderRadius, startY + bubbleHeight);
+		ctx.quadraticCurveTo(
+			padding,
+			startY + bubbleHeight,
+			padding,
+			startY + bubbleHeight - borderRadius
+		);
+		ctx.lineTo(padding, startY + borderRadius);
+		ctx.quadraticCurveTo(padding, startY, padding + borderRadius, startY);
+		ctx.closePath();
+
+		ctx.fill();
+		ctx.stroke();
+
+		// Draw text
+		ctx.fillStyle = 'black';
+		lines.forEach((line, i) => {
+			ctx.fillText(
+				line,
+				canvas.width / 2,
+				startY + padding + i * lineHeight + lineHeight / 2
+			);
+		});
+
+		// Update texture
+		this.speechBubbleTexture.needsUpdate = true;
+	}
+
+	setScene(scene: THREE.Scene): void {
+		super.setScene(scene);
+		if (scene && this.healthBarComponent) {
+			scene.add(this.healthBarComponent.getSprite());
+		}
+	}
+
+	setTargeted(targeted: boolean): void {
+		this.isTargeted = targeted;
+		this.updateHealthBarVisibility();
+	}
+
+	private updateHealthBarVisibility(): void {
+		const shouldShowHealthBar =
+			this.isTargeted ||
+			this.healthComponent.getCurrentHealth() <
+				this.healthComponent.getMaxHealth();
+
+		if (this.healthBarComponent) {
+			this.healthBarComponent.getSprite().visible = shouldShowHealthBar;
+		}
+	}
+
 	public MoveTo(position: THREE.Vector3): void {
 		this.state.isMoving = true;
 		this.state.targetPosition = position.clone();
-		// Movement logic will be handled in update()
 	}
 
 	public Say(message: string, duration: number = 3000): void {
@@ -128,14 +284,15 @@ export class NPCEntity extends Entity {
 		this.state.isTalking = true;
 		this.state.currentDialogue = message;
 
-		// Create a speech bubble or update nameplate with dialogue
-		// For now, we'll just log it
-		console.log(`${this.name} says: ${message}`);
+		// Update and show speech bubble
+		this.updateSpeechBubble(message);
+		this.speechBubble.visible = true;
 
 		// Clear the dialogue after duration
 		this.state.dialogueTimeout = setTimeout(() => {
 			this.state.isTalking = false;
 			this.state.currentDialogue = undefined;
+			this.speechBubble.visible = false;
 		}, duration);
 	}
 
@@ -151,6 +308,15 @@ export class NPCEntity extends Entity {
 		return this.profession;
 	}
 
+	public getHealthComponent(): HealthComponent {
+		return this.healthComponent;
+	}
+
+	// Add method to get the base mesh for raycasting
+	public getInteractionMesh(): THREE.Group {
+		return this.baseMesh;
+	}
+
 	update(deltaTime: number): void {
 		super.update(deltaTime);
 
@@ -164,7 +330,7 @@ export class NPCEntity extends Entity {
 			if (distance > 0.1) {
 				// Move towards target
 				direction.normalize();
-				const moveSpeed = 2 * deltaTime; // 2 units per second
+				const moveSpeed = 2 * deltaTime;
 				const movement = direction.multiplyScalar(moveSpeed);
 
 				this.transform.position.add(movement);
@@ -179,10 +345,23 @@ export class NPCEntity extends Entity {
 			}
 		}
 
-		// Make nameplate face camera
+		// Update health bar
+		this.updateHealthBarVisibility();
+		if (this.healthBarComponent.getSprite().visible) {
+			// Position health bar just above the nameplate
+			const healthBarSprite = this.healthBarComponent.getSprite();
+			healthBarSprite.position.copy(this.transform.position);
+			healthBarSprite.position.y = 1.8; // Lower position, just above the nameplate
+			this.healthBarComponent.update(deltaTime);
+		}
+
+		// Make nameplate, health bar, and speech bubble face camera
 		const sceneData = this.getScene();
 		if (sceneData?.camera) {
 			this.nameplate.quaternion.copy(sceneData.camera.quaternion);
+			if (this.state.isTalking) {
+				this.speechBubble.quaternion.copy(sceneData.camera.quaternion);
+			}
 		}
 	}
 
@@ -197,6 +376,12 @@ export class NPCEntity extends Entity {
 		// Clean up Three.js resources
 		if (this.nameplateTexture) {
 			this.nameplateTexture.dispose();
+		}
+		if (this.speechBubbleTexture) {
+			this.speechBubbleTexture.dispose();
+		}
+		if (this.healthBarComponent) {
+			this.healthBarComponent.cleanup();
 		}
 		this.mesh.traverse((child) => {
 			if (child instanceof THREE.Mesh) {

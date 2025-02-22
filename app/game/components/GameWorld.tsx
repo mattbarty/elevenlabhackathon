@@ -265,7 +265,9 @@ export default function GameWorld() {
     // Get all meshes that can be targeted
     const targetableMeshes = entities
       .map(entity => {
-        const mesh = entity instanceof ResourceEntity ? entity.getMesh() : (entity as NPCEntity).getMesh();
+        const mesh = entity instanceof ResourceEntity ?
+          entity.getMesh() :
+          (entity as NPCEntity).getInteractionMesh();
         if (mesh) {
           // Store the entity reference on the mesh for later lookup
           (mesh as any).entity = entity;
@@ -289,47 +291,43 @@ export default function GameWorld() {
       if (targetObject && (targetObject as any).entity) {
         const entity = (targetObject as any).entity as (ResourceEntity | NPCEntity);
 
-        if (entity instanceof ResourceEntity) {
-          // Handle resource targeting as before
-          if (gameContext.targetedEntity !== null) {
-            const prevResource = entities.find(r =>
-              r instanceof ResourceEntity && r.getId() === gameContext.targetedEntity
-            ) as ResourceEntity;
-            if (prevResource) {
-              prevResource.setTargeted(false);
-            }
+        // Clear previous target
+        if (gameContext.targetedEntity !== null) {
+          const prevEntity = entities.find(e => e instanceof ResourceEntity && e.getId() === gameContext.targetedEntity) as ResourceEntity;
+          if (prevEntity) {
+            prevEntity.setTargeted(false);
           }
+        }
+        if (selectedNPC) {
+          selectedNPC.setTargeted(false);
+        }
+
+        // Set new target
+        if (entity instanceof ResourceEntity) {
           entity.setTargeted(true);
           gameContext.setTargetedEntity(entity.getId());
           setSelectedNPC(null);
         } else if (entity instanceof NPCEntity) {
-          // Handle NPC selection
+          entity.setTargeted(true);
           setSelectedNPC(entity);
-          if (gameContext.targetedEntity !== null) {
-            const prevResource = entities.find(r =>
-              r instanceof ResourceEntity && r.getId() === gameContext.targetedEntity
-            ) as ResourceEntity;
-            if (prevResource) {
-              prevResource.setTargeted(false);
-            }
-            gameContext.setTargetedEntity(null);
-          }
+          gameContext.setTargetedEntity(entity.getId());
         }
       }
     } else {
       // Clear selections when clicking empty space
       if (gameContext.targetedEntity !== null) {
-        const prevResource = entities.find(r =>
-          r instanceof ResourceEntity && r.getId() === gameContext.targetedEntity
-        ) as ResourceEntity;
-        if (prevResource) {
-          prevResource.setTargeted(false);
+        const prevEntity = entities.find(e => e instanceof ResourceEntity && e.getId() === gameContext.targetedEntity) as ResourceEntity;
+        if (prevEntity) {
+          prevEntity.setTargeted(false);
         }
         gameContext.setTargetedEntity(null);
       }
-      setSelectedNPC(null);
+      if (selectedNPC) {
+        selectedNPC.setTargeted(false);
+        setSelectedNPC(null);
+      }
     }
-  }, [gameContext]);
+  }, [gameContext, selectedNPC]);
 
   // Add right-click handler for NPC movement
   const handleContextMenu = useCallback((event: MouseEvent) => {
@@ -355,7 +353,7 @@ export default function GameWorld() {
     }
   }, [selectedNPC]);
 
-  // Handle resource hover effects
+  // Handle resource and NPC hover effects
   const handleMouseMove = useCallback((event: MouseEvent) => {
     if (!containerRef.current || !sceneRef.current || !cameraRef.current) return;
 
@@ -370,17 +368,21 @@ export default function GameWorld() {
     // Update the picking ray with the camera and mouse position
     raycaster.setFromCamera(mouse, cameraRef.current);
 
-    // Get all resources and their meshes
-    const resources = entityManagerRef.current
+    // Get all entities and their meshes
+    const entities = entityManagerRef.current
       .getAllEntities()
-      .filter((entity): entity is ResourceEntity => entity instanceof ResourceEntity);
+      .filter((entity): entity is (ResourceEntity | NPCEntity) =>
+        entity instanceof ResourceEntity || entity instanceof NPCEntity
+      );
 
-    const resourceObjects = resources
-      .map(resource => resource.getMesh())
+    const targetableObjects = entities
+      .map(entity => entity instanceof ResourceEntity ?
+        entity.getMesh() :
+        (entity as NPCEntity).getInteractionMesh())
       .filter((obj): obj is THREE.Mesh | THREE.Group => obj !== null);
 
-    // Reset all resource hover states
-    resourceObjects.forEach(object => {
+    // Reset all hover states
+    targetableObjects.forEach(object => {
       object.traverse((child) => {
         if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
           child.material.emissive.setScalar(0);
@@ -389,9 +391,9 @@ export default function GameWorld() {
     });
 
     // Find intersections with all meshes
-    const intersects = raycaster.intersectObjects(resourceObjects, true);
+    const intersects = raycaster.intersectObjects(targetableObjects, true);
 
-    // Highlight hovered resource
+    // Highlight hovered object
     if (intersects.length > 0) {
       // Find the top-level mesh/group
       let targetObject = intersects[0].object;

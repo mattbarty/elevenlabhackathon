@@ -2,6 +2,7 @@ import React from 'react';
 import { useGameContext } from '../context/GameContext';
 import { EntityManager } from '../core/EntityManager';
 import { ResourceEntity } from '../entities/ResourceEntity';
+import { NPCEntity } from '../entities/NPCEntity';
 import { HealthComponent } from '../components/HealthComponent';
 
 export function TargetIndicator() {
@@ -11,19 +12,31 @@ export function TargetIndicator() {
   if (!targetedEntity) return null;
 
   const entity = entityManager.getEntity(targetedEntity);
-  if (!(entity instanceof ResourceEntity)) return null;
+  if (!(entity instanceof ResourceEntity || entity instanceof NPCEntity)) return null;
 
-  const healthComponent = entity.getHealthComponent();
+  const healthComponent = entity instanceof ResourceEntity ?
+    entity.getHealthComponent() :
+    entity instanceof NPCEntity ?
+      entity.getHealthComponent() : null;
+
+  if (!healthComponent) return null;
+
   const health = healthComponent.getCurrentHealth();
   const maxHealth = healthComponent.getMaxHealth();
   const healthPercentage = (health / maxHealth) * 100;
+
+  // Get display name based on entity type
+  const displayName = entity instanceof ResourceEntity ?
+    entity.getType() :
+    entity instanceof NPCEntity ?
+      `${entity.getName()} (${entity.getProfession()})` : '';
 
   return (
     <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 pointer-events-none">
       <div className="bg-black/40 backdrop-blur-md rounded-lg p-4 text-center min-w-[200px]
                     border border-white/10 shadow-lg">
         <div className="text-white/90 font-light mb-2">
-          {entity.getType()}
+          {displayName}
         </div>
 
         {/* Health bar */}
