@@ -16,6 +16,10 @@ import { EntityManager } from '../core/EntityManager';
 import { PlayerEntity } from './PlayerEntity';
 
 export class NPCEntity extends Entity {
+	private static readonly COLLISION_RADIUS = 0.75; // Radius for collision detection
+	private static readonly CIRCLE_SPEED = 1.0; // Speed of circling movement
+	private static readonly DIRECTION_CHANGE_INTERVAL = 3.0; // Change direction every 3 seconds
+	private circleAngle: number = Math.random() * Math.PI * 2; // Random starting angle for circling
 	private name: string;
 	private profession: NPCProfession;
 	private healthComponent: HealthComponent;
@@ -35,6 +39,8 @@ export class NPCEntity extends Entity {
 		isDead: false,
 		deathTime: 0,
 		deathAnimationComplete: false,
+		circlingClockwise: Math.random() < 0.5, // Random initial direction
+		lastDirectionChangeTime: 0,
 	};
 	private mesh!: THREE.Group;
 	private baseMesh!: THREE.Group;
@@ -47,6 +53,7 @@ export class NPCEntity extends Entity {
 	private speechBubbleCanvas!: HTMLCanvasElement;
 	private speechBubbleContext!: CanvasRenderingContext2D;
 	private isTargeted: boolean = false;
+	private knockbackVelocity: THREE.Vector3 = new THREE.Vector3();
 
 	constructor(config: NPCConfig) {
 		super({ position: config.position });
@@ -376,17 +383,18 @@ export class NPCEntity extends Entity {
 		this.state.isHit = true;
 		this.state.hitRecoveryTime = 0;
 
-		// Apply knockback
+		// Apply knockback with velocity
 		if (attacker) {
 			const knockbackDirection = this.transform.position
 				.clone()
 				.sub(attacker.getTransform().position)
 				.normalize();
-			const knockback = knockbackDirection.multiplyScalar(
-				this.combatStats.knockbackForce
-			);
-			this.transform.position.add(knockback);
-			this.mesh.position.copy(this.transform.position);
+
+			// Stronger knockback and add some upward force
+			this.knockbackVelocity
+				.copy(knockbackDirection)
+				.multiplyScalar(this.combatStats.knockbackForce * 5)
+				.add(new THREE.Vector3(0, 2, 0));
 
 			// Engage in combat with attacker if not already in combat or if current target has higher health
 			if (
@@ -502,6 +510,24 @@ export class NPCEntity extends Entity {
 		}
 	}
 
+	private checkCollisionWithNPCs(): THREE.Vector3 {
+		const correction = new THREE.Vector3();
+		const npcs = this.getNPCsByDistance();
+
+		for (const { entity: otherNPC, distance } of npcs) {
+			if (distance < NPCEntity.COLLISION_RADIUS * 2) {
+				const pushDirection = this.transform.position
+					.clone()
+					.sub(otherNPC.getTransform().position)
+					.normalize();
+				const overlap = NPCEntity.COLLISION_RADIUS * 2 - distance;
+				correction.add(pushDirection.multiplyScalar(overlap * 0.5));
+			}
+		}
+
+		return correction;
+	}
+
 	update(deltaTime: number): void {
 		super.update(deltaTime);
 
@@ -561,6 +587,30 @@ export class NPCEntity extends Entity {
 
 		// Only process other updates if not dead
 		if (!this.state.isDead) {
+			// Apply knockback velocity with gravity
+			if (this.knockbackVelocity.lengthSq() > 0) {
+				// Apply gravity
+				this.knockbackVelocity.y -= 9.8 * deltaTime;
+
+				// Apply velocity to position
+				const movement = this.knockbackVelocity
+					.clone()
+					.multiplyScalar(deltaTime);
+				this.transform.position.add(movement);
+
+				// Ground check
+				if (this.transform.position.y < 0) {
+					this.transform.position.y = 0;
+					this.knockbackVelocity.set(0, 0, 0);
+				} else {
+					// Dampen horizontal velocity
+					this.knockbackVelocity.x *= 0.95;
+					this.knockbackVelocity.z *= 0.95;
+				}
+
+				this.mesh.position.copy(this.transform.position);
+			}
+
 			// Handle hit visual feedback
 			if (this.state.isHit) {
 				this.state.hitRecoveryTime += deltaTime;
@@ -636,31 +686,78 @@ export class NPCEntity extends Entity {
 					target.getTransform().position
 				);
 
-				// Update target position for movement
-				this.state.targetPosition = target.getTransform().position.clone();
+				// Calculate optimal combat positioning
+				const optimalDistance = this.combatStats.attackRange * 0.8;
 
-				// If target is dead or too far away, end combat
+				if (distance > this.combatStats.attackRange * 1.2) {
+					// Too far - move directly towards target
+					const moveDir = target
+						.getTransform()
+						.position.clone()
+						.sub(this.transform.position)
+						.normalize()
+						.multiplyScalar(deltaTime * 3); // Faster approach speed
+					this.transform.position.add(moveDir);
+				} else {
+					// In combat range - circle around target
+					const currentTime = Date.now() / 1000; // Convert to seconds
+					if (
+						currentTime - this.state.lastDirectionChangeTime >=
+						NPCEntity.DIRECTION_CHANGE_INTERVAL
+					) {
+						this.state.circlingClockwise = !this.state.circlingClockwise;
+						this.state.lastDirectionChangeTime = currentTime;
+					}
+
+					this.circleAngle +=
+						deltaTime *
+						NPCEntity.CIRCLE_SPEED *
+						(this.state.circlingClockwise ? -1 : 1);
+
+					// Calculate desired position on circle around target
+					const targetPos = target.getTransform().position;
+					const circlePos = new THREE.Vector3(
+						targetPos.x + Math.cos(this.circleAngle) * optimalDistance,
+						targetPos.y,
+						targetPos.z + Math.sin(this.circleAngle) * optimalDistance
+					);
+
+					// Move towards the circle position
+					const moveDir = circlePos
+						.sub(this.transform.position)
+						.normalize()
+						.multiplyScalar(deltaTime * 2);
+					this.transform.position.add(moveDir);
+				}
+
+				// Apply collision correction (reduced strength during combat)
+				const correction = this.checkCollisionWithNPCs();
+				this.transform.position.add(correction.multiplyScalar(0.3)); // Reduced collision response
+				this.mesh.position.copy(this.transform.position);
+
+				// Always face the target
+				const lookAtPos = target.getTransform().position.clone();
+				lookAtPos.y = this.transform.position.y; // Keep level
+				this.mesh.lookAt(lookAtPos);
+
+				// Attack if in range and facing target
+				if (distance <= this.combatStats.attackRange) {
+					this.attack(target);
+				}
+
+				// End combat if target is dead or too far
 				if (
 					(target instanceof NPCEntity &&
 						target.getHealthComponent().getCurrentHealth() <= 0) ||
-					distance > 10
+					distance > 15 // Increased disengage distance
 				) {
 					this.state.inCombat = false;
 					this.state.combatTarget = undefined;
-					this.state.isMoving = false;
-					this.state.targetEntity = undefined;
-					this.state.targetPosition = undefined;
-				} else if (distance <= this.combatStats.attackRange) {
-					// If in range, attack
-					this.attack(target);
-				} else {
-					// Move towards target
-					this.state.isMoving = true;
 				}
 			}
 
-			// Handle movement if we have a target
-			if (this.state.isMoving) {
+			// Handle movement if we have a target and not in combat
+			if (this.state.isMoving && !this.state.inCombat) {
 				// Update target position if we're tracking an entity
 				if (this.state.targetEntity) {
 					this.state.targetPosition = this.state.targetEntity
@@ -675,18 +772,19 @@ export class NPCEntity extends Entity {
 					const distance = direction.length();
 
 					if (distance > 0.1) {
-						// Move towards target
+						// Move towards target with smooth acceleration
 						direction.normalize();
 						const moveSpeed = 2 * deltaTime;
 						const movement = direction.multiplyScalar(moveSpeed);
 
+						// Apply movement and collision correction
 						this.transform.position.add(movement);
-						this.mesh.position.copy(this.transform.position);
+						const correction = this.checkCollisionWithNPCs();
+						this.transform.position.add(correction);
 
-						// Rotate to face movement direction
+						this.mesh.position.copy(this.transform.position);
 						this.mesh.lookAt(this.state.targetPosition);
-					} else if (!this.state.inCombat) {
-						// Only stop moving if not in combat
+					} else {
 						this.state.isMoving = false;
 						this.state.targetPosition = undefined;
 						this.state.targetEntity = undefined;

@@ -53,4 +53,6 @@ export interface NPCState {
 	isDead: boolean;
 	deathTime: number;
 	deathAnimationComplete: boolean;
+	circlingClockwise: boolean;
+	lastDirectionChangeTime: number;
 }
