@@ -1,8 +1,14 @@
-import { useEffect, useRef } from 'react';
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { PlayerEntity } from '../entities/PlayerEntity';
 import { EntityManager } from '../core/EntityManager';
+import { ResourceManager } from '../managers/ResourceManager';
+import { ResourceType } from '../types/resources';
+import { GameGUI } from './GameGUI';
+import { useGameContext } from '../context/GameContext';
 
 // Helper function to create a stylized tree
 function createTree(height: number = 2): THREE.Group {
@@ -68,8 +74,33 @@ export default function GameWorld() {
   const animationFrameRef = useRef<number>(0);
   const controlsRef = useRef<OrbitControls | null>(null);
   const lastPlayerPosition = useRef(new THREE.Vector3());
+  const lastPlayerRotation = useRef(new THREE.Quaternion());
   const isMoving = useRef(false);
   const entityManagerRef = useRef<EntityManager>(EntityManager.getInstance());
+  const [timeOfDay, setTimeOfDay] = useState(12); // Start at noon
+  const TIME_SCALE = 0.1; // 1 game hour = 10 real seconds
+  const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
+  const directionalLightRef = useRef<THREE.DirectionalLight | null>(null);
+
+  const gameContext = useGameContext();
+
+  // Effect for handling lighting updates
+  useEffect(() => {
+    if (!sceneRef.current || !ambientLightRef.current || !directionalLightRef.current) return;
+
+    ambientLightRef.current.intensity = gameContext.ambientIntensity;
+    directionalLightRef.current.intensity = gameContext.lightIntensity;
+    directionalLightRef.current.color.copy(gameContext.lightColor);
+
+    if (sceneRef.current.fog instanceof THREE.FogExp2) {
+      sceneRef.current.fog.color.copy(gameContext.lightColor);
+    }
+    if (sceneRef.current.background instanceof THREE.Color) {
+      (sceneRef.current.background as THREE.Color).copy(
+        gameContext.lightColor.clone().multiplyScalar(0.5)
+      );
+    }
+  }, [gameContext]);
 
   useEffect(() => {
     // Prevent double initialization
@@ -121,36 +152,57 @@ export default function GameWorld() {
     scene.add(gridHelper);
 
     // Add lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, gameContext.ambientIntensity);
     scene.add(ambientLight);
+    ambientLightRef.current = ambientLight;
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, gameContext.lightIntensity);
     directionalLight.position.set(5, 5, 5);
     directionalLight.castShadow = true;
+    directionalLight.color.copy(gameContext.lightColor);
     scene.add(directionalLight);
+    directionalLightRef.current = directionalLight;
 
-    // Add trees and rocks
+    // Initialize resource manager and create resources
+    const resourceManager = ResourceManager.getInstance();
+
+    // Add resources around the map
     for (let i = 0; i < 30; i++) {
-      const tree = createTree(1.5 + Math.random());
       const angle = Math.random() * Math.PI * 2;
       const radius = 5 + Math.random() * 20;
-      tree.position.set(
+      const position = new THREE.Vector3(
         Math.cos(angle) * radius,
         0,
         Math.sin(angle) * radius
       );
-      tree.castShadow = true;
-      scene.add(tree);
 
-      if (Math.random() > 0.7) {
-        const rock = createRock();
-        rock.position.set(
-          Math.cos(angle + Math.random()) * (radius + Math.random() * 5),
-          0,
-          Math.sin(angle + Math.random()) * (radius + Math.random() * 5)
-        );
-        rock.castShadow = true;
-        scene.add(rock);
+      // Create trees with 70% probability, stones with 30%
+      if (Math.random() < 0.7) {
+        const tree = resourceManager.createResource({
+          type: ResourceType.TREE,
+          position: position.clone(),
+          properties: {
+            maxHealth: 100 + Math.random() * 50, // Random health between 100-150
+          }
+        });
+        const treeMesh = tree.getMesh();
+        if (treeMesh !== null) {
+          scene.add(treeMesh);
+        }
+        tree.setScene(scene);
+      } else {
+        const stone = resourceManager.createResource({
+          type: ResourceType.STONE,
+          position: position.clone(),
+          properties: {
+            maxHealth: 200 + Math.random() * 100, // Random health between 200-300
+          }
+        });
+        const stoneMesh = stone.getMesh();
+        if (stoneMesh !== null) {
+          scene.add(stoneMesh);
+        }
+        stone.setScene(scene);
       }
     }
 
@@ -181,10 +233,11 @@ export default function GameWorld() {
     controls.maxPolarAngle = Math.PI / 2;
     controlsRef.current = controls;
 
-    // Set initial camera position and store initial player position
+    // Set initial camera position and store initial player state
     camera.position.set(0, 8, 12);
     controls.target.copy(player.getTransform().position);
     lastPlayerPosition.current.copy(player.getTransform().position);
+    lastPlayerRotation.current.copy(player.getTransform().rotation);
 
     // Animation loop
     let lastTime = 0;
@@ -192,7 +245,12 @@ export default function GameWorld() {
       const deltaTime = (time - lastTime) / 1000;
       lastTime = time;
 
-      // Update all entities through the manager
+      // Update time of day
+      setTimeOfDay(prevTime => {
+        const newTime = (prevTime + deltaTime * TIME_SCALE) % 24;
+        return newTime;
+      });
+
       entityManagerRef.current.update(deltaTime);
 
       if (playerRef.current && playerMeshRef.current) {
@@ -200,9 +258,19 @@ export default function GameWorld() {
         playerMeshRef.current.position.copy(transform.position);
         playerMeshRef.current.quaternion.copy(transform.rotation);
 
-        // Check if player is moving by comparing positions
+        // Check if player is moving or rotating
         const moveThreshold = 0.001;
-        isMoving.current = transform.position.distanceToSquared(lastPlayerPosition.current) > moveThreshold;
+        const rotationThreshold = 0.0001; // More sensitive rotation threshold
+
+        const isPositionChanged = transform.position.distanceToSquared(lastPlayerPosition.current) > moveThreshold;
+
+        // Calculate rotation difference using angle
+        const currentRotationAngle = new THREE.Euler().setFromQuaternion(transform.rotation).y;
+        const lastRotationAngle = new THREE.Euler().setFromQuaternion(lastPlayerRotation.current).y;
+        const rotationDiff = Math.abs(currentRotationAngle - lastRotationAngle);
+        const isRotationChanged = rotationDiff > rotationThreshold;
+
+        isMoving.current = isPositionChanged || isRotationChanged;
 
         if (isMoving.current && controlsRef.current && cameraRef.current) {
           // Calculate ideal camera position behind player
@@ -219,8 +287,9 @@ export default function GameWorld() {
           controlsRef.current.target.copy(transform.position);
         }
 
-        // Store current position for next frame
+        // Store current state for next frame
         lastPlayerPosition.current.copy(transform.position);
+        lastPlayerRotation.current.copy(transform.rotation);
       }
 
       if (controlsRef.current) {
@@ -278,5 +347,10 @@ export default function GameWorld() {
     };
   }, []);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  return (
+    <>
+      <div ref={containerRef} className="w-full h-full" />
+      <GameGUI />
+    </>
+  );
 } 

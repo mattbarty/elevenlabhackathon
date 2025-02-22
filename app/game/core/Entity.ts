@@ -1,10 +1,12 @@
 import { Component } from './Component';
 import { Transform, EntityConfig, TransformUtils } from './Transform';
+import * as THREE from 'three';
 
 export class Entity {
 	protected readonly id: number;
 	protected components: Map<string, Component>;
 	protected transform: Transform;
+	protected scene: THREE.Scene | null = null;
 	private static nextEntityId = 1;
 
 	constructor(config: EntityConfig = {}) {
@@ -23,6 +25,19 @@ export class Entity {
 
 	getTransform(): Transform {
 		return this.transform;
+	}
+
+	setScene(scene: THREE.Scene): void {
+		this.scene = scene;
+	}
+
+	getScene(): { scene: THREE.Scene; camera: THREE.Camera } | null {
+		if (!this.scene) return null;
+		const camera = this.scene.getObjectByProperty(
+			'type',
+			'PerspectiveCamera'
+		) as THREE.Camera;
+		return camera ? { scene: this.scene, camera } : null;
 	}
 
 	addComponent<T extends Component>(componentType: { new (): T }): T {

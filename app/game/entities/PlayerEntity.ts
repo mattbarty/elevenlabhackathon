@@ -21,6 +21,6 @@ export class PlayerEntity extends Entity {
 	}
 
 	destroy(): void {
-		this.movementComponent.destroy();
+		this.movementComponent.cleanup();
 	}
 }
