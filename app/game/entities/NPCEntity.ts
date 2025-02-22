@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Entity } from '../core/Entity';
 import { NPCConfig, NPCProfession, NPCState } from '../types/npc';
 import { HealthComponent } from '../components/HealthComponent';
+import { createPawnVisuals, createRookVisuals } from './ChessPieceVisuals';
 
 export class NPCEntity extends Entity {
 	private name: string;
@@ -41,124 +42,14 @@ export class NPCEntity extends Entity {
 	private createVisuals(): void {
 		this.mesh = new THREE.Group();
 
-		if (this.profession === NPCProfession.VILLAGER) {
-			// Create pawn-like shape
-			// Base
-			const baseGeometry = new THREE.CylinderGeometry(0.3, 0.4, 0.2, 16);
-			const baseMaterial = new THREE.MeshStandardMaterial({
-				color: 0x8c6d4a,
-				roughness: 0.7,
-			});
-			const base = new THREE.Mesh(baseGeometry, baseMaterial);
-			base.position.y = 0.1;
-			this.mesh.add(base);
+		// Create the appropriate chess piece based on profession
+		const visuals =
+			this.profession === NPCProfession.VILLAGER
+				? createPawnVisuals()
+				: createRookVisuals();
 
-			// Body
-			const bodyGeometry = new THREE.CylinderGeometry(0.2, 0.3, 0.6, 16);
-			const bodyMaterial = new THREE.MeshStandardMaterial({
-				color: 0x8c6d4a,
-				roughness: 0.7,
-			});
-			const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-			body.position.y = 0.5;
-			this.mesh.add(body);
-
-			// Head (sphere)
-			const headGeometry = new THREE.SphereGeometry(0.25, 16, 16);
-			const headMaterial = new THREE.MeshStandardMaterial({
-				color: 0x8c6d4a,
-				roughness: 0.7,
-			});
-			const head = new THREE.Mesh(headGeometry, headMaterial);
-			head.position.y = 1.0;
-			this.mesh.add(head);
-
-			// Add eyes (small black spheres)
-			const eyeMaterial = new THREE.MeshStandardMaterial({
-				color: 0x000000,
-				roughness: 0.5,
-				metalness: 0.5,
-			});
-			const eyeGeometry = new THREE.SphereGeometry(0.04, 8, 8);
-
-			// Left eye
-			const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-			leftEye.position.set(-0.1, 1.05, 0.2);
-			this.mesh.add(leftEye);
-
-			// Right eye
-			const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-			rightEye.position.set(0.1, 1.05, 0.2);
-			this.mesh.add(rightEye);
-		} else if (this.profession === NPCProfession.GUARD) {
-			// Create rook-like shape
-			// Base
-			const baseGeometry = new THREE.CylinderGeometry(0.35, 0.45, 0.2, 8);
-			const baseMaterial = new THREE.MeshStandardMaterial({
-				color: 0x4a6d8c,
-				roughness: 0.7,
-			});
-			const base = new THREE.Mesh(baseGeometry, baseMaterial);
-			base.position.y = 0.1;
-			this.mesh.add(base);
-
-			// Body
-			const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.35, 0.8, 8);
-			const bodyMaterial = new THREE.MeshStandardMaterial({
-				color: 0x4a6d8c,
-				roughness: 0.7,
-			});
-			const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-			body.position.y = 0.6;
-			this.mesh.add(body);
-
-			// Top crown
-			const crownGroup = new THREE.Group();
-			crownGroup.position.y = 1.1;
-
-			// Main crown cylinder
-			const crownBaseGeometry = new THREE.CylinderGeometry(0.4, 0.3, 0.2, 8);
-			const crownMaterial = new THREE.MeshStandardMaterial({
-				color: 0x4a6d8c,
-				roughness: 0.7,
-			});
-			const crownBase = new THREE.Mesh(crownBaseGeometry, crownMaterial);
-			crownGroup.add(crownBase);
-
-			// Create battlements (the distinctive rook top)
-			const numBattlements = 4;
-			for (let i = 0; i < numBattlements; i++) {
-				const angle = (i / numBattlements) * Math.PI * 2;
-				const battlementGeometry = new THREE.BoxGeometry(0.15, 0.2, 0.15);
-				const battlement = new THREE.Mesh(battlementGeometry, crownMaterial);
-				battlement.position.set(
-					Math.cos(angle) * 0.25,
-					0.2,
-					Math.sin(angle) * 0.25
-				);
-				crownGroup.add(battlement);
-			}
-
-			this.mesh.add(crownGroup);
-
-			// Add eyes (small black spheres)
-			const eyeMaterial = new THREE.MeshStandardMaterial({
-				color: 0x000000,
-				roughness: 0.5,
-				metalness: 0.5,
-			});
-			const eyeGeometry = new THREE.SphereGeometry(0.04, 8, 8);
-
-			// Left eye
-			const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-			leftEye.position.set(-0.12, 0.9, 0.25);
-			this.mesh.add(leftEye);
-
-			// Right eye
-			const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-			rightEye.position.set(0.12, 0.9, 0.25);
-			this.mesh.add(rightEye);
-		}
+		// Add the visuals to the mesh group
+		this.mesh.add(visuals);
 
 		// Position the mesh and set up shadows
 		this.mesh.position.copy(this.transform.position);

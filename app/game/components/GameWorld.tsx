@@ -12,6 +12,7 @@ import { useGameContext } from '../context/GameContext';
 import { ResourceEntity } from '../entities/ResourceEntity';
 import { NPCEntity } from '../entities/NPCEntity';
 import { NPCProfession } from '../types/npc';
+import { createKingVisuals } from '../entities/ChessPieceVisuals';
 
 // Helper function to create a stylized tree with varying size
 function createTree(height: number = 2): THREE.Group {
@@ -672,7 +673,7 @@ export default function GameWorld() {
       stone.setScene(scene);
     }
 
-    // Create player with stylized look
+    // Create player
     const player = new PlayerEntity({
       position: new THREE.Vector3(0, 0, 0),
       speed: 5,
@@ -682,88 +683,8 @@ export default function GameWorld() {
     entityManagerRef.current.addEntity(player);
 
     // Create player mesh as a king chess piece
-    const playerGroup = new THREE.Group();
-
-    // Base
-    const baseGeometry = new THREE.CylinderGeometry(0.4, 0.5, 0.2, 16);
-    const baseMaterial = new THREE.MeshStandardMaterial({
-      color: 0x2c698d,
-      roughness: 0.7
-    });
-    const base = new THREE.Mesh(baseGeometry, baseMaterial);
-    base.position.y = 0.1;
-    playerGroup.add(base);
-
-    // Body - made more slender
-    const bodyGeometry = new THREE.CylinderGeometry(0.25, 0.35, 0.9, 16);
-    const body = new THREE.Mesh(bodyGeometry, baseMaterial);
-    body.position.y = 0.65;
-    playerGroup.add(body);
-
-    // Upper body - adjusted proportions
-    const upperBodyGeometry = new THREE.CylinderGeometry(0.3, 0.25, 0.3, 16);
-    const upperBody = new THREE.Mesh(upperBodyGeometry, baseMaterial);
-    upperBody.position.y = 1.25;
-    playerGroup.add(upperBody);
-
-    // Add cute eyes (slightly larger than NPC eyes)
-    const eyeMaterial = new THREE.MeshStandardMaterial({
-      color: 0x000000,
-      roughness: 0.3,  // More glossy than NPC eyes
-      metalness: 0.7   // More metallic for a shiny look
-    });
-    const eyeGeometry = new THREE.SphereGeometry(0.05, 12, 12);  // Larger and smoother than NPC eyes
-
-    // Left eye
-    const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-    leftEye.position.set(-0.12, 1.3, 0.22);
-    playerGroup.add(leftEye);
-
-    // Right eye
-    const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-    rightEye.position.set(0.12, 1.3, 0.22);
-    playerGroup.add(rightEye);
-
-    // Crown base - slightly smaller
-    const crownBaseGeometry = new THREE.CylinderGeometry(0.35, 0.3, 0.15, 16);
-    const crownBase = new THREE.Mesh(crownBaseGeometry, baseMaterial);
-    crownBase.position.y = 1.475;
-    playerGroup.add(crownBase);
-
-    // Crown points - adjusted position
-    const numPoints = 5;
-    const pointRadius = 0.3;
-    for (let i = 0; i < numPoints; i++) {
-      const angle = (i / numPoints) * Math.PI * 2;
-      const pointGeometry = new THREE.ConeGeometry(0.07, 0.2, 8);
-      const point = new THREE.Mesh(pointGeometry, baseMaterial);
-      point.position.set(
-        Math.cos(angle) * pointRadius,
-        1.65,
-        Math.sin(angle) * pointRadius
-      );
-      playerGroup.add(point);
-    }
-
-    // Center cross - adjusted position
-    const crossVerticalGeometry = new THREE.BoxGeometry(0.07, 0.3, 0.07);
-    const crossVertical = new THREE.Mesh(crossVerticalGeometry, baseMaterial);
-    crossVertical.position.y = 1.65;
-    playerGroup.add(crossVertical);
-
-    const crossHorizontalGeometry = new THREE.BoxGeometry(0.18, 0.07, 0.07);
-    const crossHorizontal = new THREE.Mesh(crossHorizontalGeometry, baseMaterial);
-    crossHorizontal.position.y = 1.7;
-    playerGroup.add(crossHorizontal);
-
-    // Set up the mesh group
+    const playerGroup = createKingVisuals();
     playerGroup.position.copy(player.getTransform().position);
-    playerGroup.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-      }
-    });
     scene.add(playerGroup);
     playerMeshRef.current = playerGroup as unknown as THREE.Mesh;
 
