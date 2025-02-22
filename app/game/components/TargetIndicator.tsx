@@ -39,7 +39,7 @@ export function TargetIndicator() {
 
         {/* Health numbers */}
         <div className="text-white/80 text-sm mt-1">
-          {Math.ceil(health)} / {maxHealth}
+          {Math.round(health)} / {Math.round(maxHealth)}
         </div>
       </div>
     </div>
