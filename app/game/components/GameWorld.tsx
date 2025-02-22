@@ -674,21 +674,80 @@ export default function GameWorld() {
 
     // Create player with stylized look
     const player = new PlayerEntity({
-      position: new THREE.Vector3(0, 0.5, 0),
+      position: new THREE.Vector3(0, 0, 0),
       speed: 5,
       turnRate: 3,
     });
     playerRef.current = player;
     entityManagerRef.current.addEntity(player);
 
-    // Create player mesh as a proper cube
-    const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x2c698d });
-    const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
-    playerMesh.position.copy(player.getTransform().position);
-    playerMesh.castShadow = true;
-    scene.add(playerMesh);
-    playerMeshRef.current = playerMesh;
+    // Create player mesh as a king chess piece
+    const playerGroup = new THREE.Group();
+
+    // Base
+    const baseGeometry = new THREE.CylinderGeometry(0.4, 0.5, 0.2, 16);
+    const baseMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2c698d,
+      roughness: 0.7
+    });
+    const base = new THREE.Mesh(baseGeometry, baseMaterial);
+    base.position.y = 0.1;
+    playerGroup.add(base);
+
+    // Body - made more slender
+    const bodyGeometry = new THREE.CylinderGeometry(0.25, 0.35, 0.9, 16);
+    const body = new THREE.Mesh(bodyGeometry, baseMaterial);
+    body.position.y = 0.65;
+    playerGroup.add(body);
+
+    // Upper body - adjusted proportions
+    const upperBodyGeometry = new THREE.CylinderGeometry(0.3, 0.25, 0.3, 16);
+    const upperBody = new THREE.Mesh(upperBodyGeometry, baseMaterial);
+    upperBody.position.y = 1.25;
+    playerGroup.add(upperBody);
+
+    // Crown base - slightly smaller
+    const crownBaseGeometry = new THREE.CylinderGeometry(0.35, 0.3, 0.15, 16);
+    const crownBase = new THREE.Mesh(crownBaseGeometry, baseMaterial);
+    crownBase.position.y = 1.475;
+    playerGroup.add(crownBase);
+
+    // Crown points - adjusted position
+    const numPoints = 5;
+    const pointRadius = 0.3;
+    for (let i = 0; i < numPoints; i++) {
+      const angle = (i / numPoints) * Math.PI * 2;
+      const pointGeometry = new THREE.ConeGeometry(0.07, 0.2, 8);
+      const point = new THREE.Mesh(pointGeometry, baseMaterial);
+      point.position.set(
+        Math.cos(angle) * pointRadius,
+        1.65,
+        Math.sin(angle) * pointRadius
+      );
+      playerGroup.add(point);
+    }
+
+    // Center cross - adjusted position
+    const crossVerticalGeometry = new THREE.BoxGeometry(0.07, 0.3, 0.07);
+    const crossVertical = new THREE.Mesh(crossVerticalGeometry, baseMaterial);
+    crossVertical.position.y = 1.75;
+    playerGroup.add(crossVertical);
+
+    const crossHorizontalGeometry = new THREE.BoxGeometry(0.18, 0.07, 0.07);
+    const crossHorizontal = new THREE.Mesh(crossHorizontalGeometry, baseMaterial);
+    crossHorizontal.position.y = 1.8;
+    playerGroup.add(crossHorizontal);
+
+    // Set up the mesh group
+    playerGroup.position.copy(player.getTransform().position);
+    playerGroup.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    scene.add(playerGroup);
+    playerMeshRef.current = playerGroup as unknown as THREE.Mesh;
 
     // Add orbit controls with constraints
     const controls = new OrbitControls(camera, renderer.domElement);
