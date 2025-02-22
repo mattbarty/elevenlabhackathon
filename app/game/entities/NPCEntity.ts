@@ -29,6 +29,12 @@ export class NPCEntity extends Entity {
 		lastAttackTime: 0,
 		isHit: false,
 		hitRecoveryTime: 0,
+		inCombat: false,
+		combatTarget: undefined,
+		attackAnimationTime: 0,
+		isDead: false,
+		deathTime: 0,
+		deathAnimationComplete: false,
 	};
 	private mesh!: THREE.Group;
 	private baseMesh!: THREE.Group;
@@ -360,6 +366,12 @@ export class NPCEntity extends Entity {
 		this.healthComponent.damage(damage);
 		this.updateHealthBarVisibility();
 
+		// Check for death
+		if (this.healthComponent.getCurrentHealth() <= 0 && !this.state.isDead) {
+			this.die();
+			return;
+		}
+
 		// Visual feedback
 		this.state.isHit = true;
 		this.state.hitRecoveryTime = 0;
@@ -375,6 +387,17 @@ export class NPCEntity extends Entity {
 			);
 			this.transform.position.add(knockback);
 			this.mesh.position.copy(this.transform.position);
+
+			// Engage in combat with attacker if not already in combat or if current target has higher health
+			if (
+				attacker instanceof NPCEntity &&
+				(!this.state.combatTarget ||
+					(this.state.combatTarget instanceof NPCEntity &&
+						this.state.combatTarget.getHealthComponent().getCurrentHealth() >
+							attacker.getHealthComponent().getCurrentHealth()))
+			) {
+				this.engageInCombat(attacker);
+			}
 		}
 
 		// Profession-specific hurt phrases
@@ -395,6 +418,14 @@ export class NPCEntity extends Entity {
 		this.Say(hurtPhrases[Math.floor(Math.random() * hurtPhrases.length)], 1000);
 	}
 
+	public engageInCombat(target: NPCEntity): void {
+		this.state.inCombat = true;
+		this.state.combatTarget = target;
+		this.state.isMoving = true;
+		this.state.targetEntity = target;
+		this.state.targetPosition = target.getTransform().position.clone();
+	}
+
 	public attack(target: Entity): void {
 		const now = Date.now();
 		if (now - this.state.lastAttackTime < this.combatStats.attackInterval) {
@@ -407,6 +438,7 @@ export class NPCEntity extends Entity {
 		if (distance <= this.combatStats.attackRange) {
 			this.state.isAttacking = true;
 			this.state.lastAttackTime = now;
+			this.state.attackAnimationTime = 0;
 
 			// If target is another NPC, make them take damage
 			if (target instanceof NPCEntity) {
@@ -435,126 +467,250 @@ export class NPCEntity extends Entity {
 		}
 	}
 
+	private die(): void {
+		this.state.isDead = true;
+		this.state.deathTime = 0;
+		this.state.isMoving = false;
+		this.state.inCombat = false;
+		this.state.combatTarget = undefined;
+		this.state.targetEntity = undefined;
+		this.state.targetPosition = undefined;
+
+		// Say a death phrase based on profession
+		const deathPhrases =
+			this.profession === NPCProfession.GUARD
+				? [
+						'I... have failed...',
+						'The guard... falls...',
+						'Protect... the village...',
+						'With my last breath...',
+				  ]
+				: [
+						'I see the light...',
+						'Goodbye, cruel world...',
+						'I never meant for this...',
+						'Tell my family...',
+				  ];
+		this.Say(
+			deathPhrases[Math.floor(Math.random() * deathPhrases.length)],
+			2000
+		);
+
+		// Hide health bar
+		if (this.healthBarComponent) {
+			this.healthBarComponent.getSprite().visible = false;
+		}
+	}
+
 	update(deltaTime: number): void {
 		super.update(deltaTime);
 
-		// Handle hit visual feedback
-		if (this.state.isHit) {
-			this.state.hitRecoveryTime += deltaTime;
+		// Handle death animation and fade out
+		if (this.state.isDead) {
+			this.state.deathTime += deltaTime;
 
-			// Flash red
-			this.baseMesh.traverse((child) => {
-				if (child instanceof THREE.Mesh) {
-					if (Array.isArray(child.material)) {
-						child.material.forEach((m) => {
-							m.color.setRGB(
-								1,
-								this.state.hitRecoveryTime * 2,
-								this.state.hitRecoveryTime * 2
-							);
-						});
-					} else {
-						child.material.color.setRGB(
-							1,
-							this.state.hitRecoveryTime * 2,
-							this.state.hitRecoveryTime * 2
-						);
-					}
+			if (!this.state.deathAnimationComplete) {
+				// Fall over animation (rotate 90 degrees over 1 second)
+				const fallProgress = Math.min(this.state.deathTime, 1);
+				const fallAngle = (Math.PI / 2) * fallProgress;
+				this.baseMesh.rotation.z = fallAngle;
+
+				if (fallProgress >= 1) {
+					this.state.deathAnimationComplete = true;
 				}
-			});
+			}
 
-			// Reset after 0.5 seconds
-			if (this.state.hitRecoveryTime >= 0.5) {
-				this.state.isHit = false;
-				this.state.hitRecoveryTime = 0;
+			// Start fading after 7 seconds, complete by 10 seconds
+			if (this.state.deathTime > 7) {
+				const fadeProgress = Math.min((this.state.deathTime - 7) / 3, 1);
 
-				// Reset to original colors
+				// Fade out all materials
 				this.baseMesh.traverse((child) => {
 					if (child instanceof THREE.Mesh) {
 						if (Array.isArray(child.material)) {
 							child.material.forEach((m) => {
-								const originalColor = this.originalColors.get(m);
-								if (originalColor) {
-									m.color.copy(originalColor);
-								}
+								m.transparent = true;
+								m.opacity = 1 - fadeProgress;
 							});
 						} else {
-							const originalColor = this.originalColors.get(child.material);
-							if (originalColor) {
-								child.material.color.copy(originalColor);
-							}
+							child.material.transparent = true;
+							child.material.opacity = 1 - fadeProgress;
 						}
 					}
 				});
-			}
-		}
 
-		// Handle movement and attacking
-		if (this.state.isMoving && this.state.targetEntity) {
-			const distance = this.transform.position.distanceTo(
-				this.state.targetEntity.getTransform().position
-			);
+				// Fade out nameplate and speech bubble
+				if (this.nameplate.material instanceof THREE.SpriteMaterial) {
+					this.nameplate.material.opacity = 1 - fadeProgress;
+				}
+				if (this.speechBubble.material instanceof THREE.SpriteMaterial) {
+					this.speechBubble.material.opacity = 1 - fadeProgress;
+				}
 
-			// If within attack range and target is an NPC, attack them
-			if (
-				this.state.targetEntity instanceof NPCEntity &&
-				distance <= this.combatStats.attackRange
-			) {
-				this.attack(this.state.targetEntity);
-			}
-		}
-
-		// Handle movement if we have a target
-		if (this.state.isMoving) {
-			// Update target position if we're tracking an entity
-			if (this.state.targetEntity) {
-				this.state.targetPosition = this.state.targetEntity
-					.getTransform()
-					.position.clone();
-			}
-
-			if (this.state.targetPosition) {
-				const direction = this.state.targetPosition
-					.clone()
-					.sub(this.transform.position);
-				const distance = direction.length();
-
-				if (distance > 0.1) {
-					// Move towards target
-					direction.normalize();
-					const moveSpeed = 2 * deltaTime;
-					const movement = direction.multiplyScalar(moveSpeed);
-
-					this.transform.position.add(movement);
-					this.mesh.position.copy(this.transform.position);
-
-					// Rotate to face movement direction
-					this.mesh.lookAt(this.state.targetPosition);
-				} else {
-					// Reached target
-					this.state.isMoving = false;
-					this.state.targetPosition = undefined;
-					this.state.targetEntity = undefined;
+				// Remove entity after fade completes
+				if (fadeProgress >= 1) {
+					const entityManager = EntityManager.getInstance();
+					entityManager.removeEntity(this);
+					if (this.scene) {
+						this.scene.remove(this.mesh);
+					}
+					return;
 				}
 			}
 		}
 
-		// Update health bar
-		this.updateHealthBarVisibility();
-		if (this.healthBarComponent.getSprite().visible) {
-			// Position health bar just above the nameplate
-			const healthBarSprite = this.healthBarComponent.getSprite();
-			healthBarSprite.position.copy(this.transform.position);
-			healthBarSprite.position.y = 1.8; // Lower position, just above the nameplate
-			this.healthBarComponent.update(deltaTime);
-		}
+		// Only process other updates if not dead
+		if (!this.state.isDead) {
+			// Handle hit visual feedback
+			if (this.state.isHit) {
+				this.state.hitRecoveryTime += deltaTime;
 
-		// Make nameplate, health bar, and speech bubble face camera
-		const sceneData = this.getScene();
-		if (sceneData?.camera) {
-			this.nameplate.quaternion.copy(sceneData.camera.quaternion);
-			if (this.state.isTalking) {
-				this.speechBubble.quaternion.copy(sceneData.camera.quaternion);
+				// Flash red
+				this.baseMesh.traverse((child) => {
+					if (child instanceof THREE.Mesh) {
+						if (Array.isArray(child.material)) {
+							child.material.forEach((m) => {
+								m.color.setRGB(
+									1,
+									this.state.hitRecoveryTime * 2,
+									this.state.hitRecoveryTime * 2
+								);
+							});
+						} else {
+							child.material.color.setRGB(
+								1,
+								this.state.hitRecoveryTime * 2,
+								this.state.hitRecoveryTime * 2
+							);
+						}
+					}
+				});
+
+				// Reset after 0.5 seconds
+				if (this.state.hitRecoveryTime >= 0.5) {
+					this.state.isHit = false;
+					this.state.hitRecoveryTime = 0;
+
+					// Reset to original colors
+					this.baseMesh.traverse((child) => {
+						if (child instanceof THREE.Mesh) {
+							if (Array.isArray(child.material)) {
+								child.material.forEach((m) => {
+									const originalColor = this.originalColors.get(m);
+									if (originalColor) {
+										m.color.copy(originalColor);
+									}
+								});
+							} else {
+								const originalColor = this.originalColors.get(child.material);
+								if (originalColor) {
+									child.material.color.copy(originalColor);
+								}
+							}
+						}
+					});
+				}
+			}
+
+			// Handle attack animation
+			if (this.state.isAttacking) {
+				this.state.attackAnimationTime += deltaTime;
+				const animationDuration = 0.5; // Half a second for full attack animation
+
+				if (this.state.attackAnimationTime <= animationDuration) {
+					// Simple forward and back swing animation
+					const progress = this.state.attackAnimationTime / animationDuration;
+					const swingAngle = Math.sin(progress * Math.PI) * (Math.PI / 6); // 30-degree swing
+					this.baseMesh.rotation.x = swingAngle;
+				} else {
+					this.state.isAttacking = false;
+					this.state.attackAnimationTime = 0;
+					this.baseMesh.rotation.x = 0;
+				}
+			}
+
+			// Handle combat behavior
+			if (this.state.inCombat && this.state.combatTarget) {
+				const target = this.state.combatTarget;
+				const distance = this.transform.position.distanceTo(
+					target.getTransform().position
+				);
+
+				// Update target position for movement
+				this.state.targetPosition = target.getTransform().position.clone();
+
+				// If target is dead or too far away, end combat
+				if (
+					(target instanceof NPCEntity &&
+						target.getHealthComponent().getCurrentHealth() <= 0) ||
+					distance > 10
+				) {
+					this.state.inCombat = false;
+					this.state.combatTarget = undefined;
+					this.state.isMoving = false;
+					this.state.targetEntity = undefined;
+					this.state.targetPosition = undefined;
+				} else if (distance <= this.combatStats.attackRange) {
+					// If in range, attack
+					this.attack(target);
+				} else {
+					// Move towards target
+					this.state.isMoving = true;
+				}
+			}
+
+			// Handle movement if we have a target
+			if (this.state.isMoving) {
+				// Update target position if we're tracking an entity
+				if (this.state.targetEntity) {
+					this.state.targetPosition = this.state.targetEntity
+						.getTransform()
+						.position.clone();
+				}
+
+				if (this.state.targetPosition) {
+					const direction = this.state.targetPosition
+						.clone()
+						.sub(this.transform.position);
+					const distance = direction.length();
+
+					if (distance > 0.1) {
+						// Move towards target
+						direction.normalize();
+						const moveSpeed = 2 * deltaTime;
+						const movement = direction.multiplyScalar(moveSpeed);
+
+						this.transform.position.add(movement);
+						this.mesh.position.copy(this.transform.position);
+
+						// Rotate to face movement direction
+						this.mesh.lookAt(this.state.targetPosition);
+					} else if (!this.state.inCombat) {
+						// Only stop moving if not in combat
+						this.state.isMoving = false;
+						this.state.targetPosition = undefined;
+						this.state.targetEntity = undefined;
+					}
+				}
+			}
+
+			// Update health bar
+			this.updateHealthBarVisibility();
+			if (this.healthBarComponent.getSprite().visible) {
+				// Position health bar just above the nameplate
+				const healthBarSprite = this.healthBarComponent.getSprite();
+				healthBarSprite.position.copy(this.transform.position);
+				healthBarSprite.position.y = 1.8; // Lower position, just above the nameplate
+				this.healthBarComponent.update(deltaTime);
+			}
+
+			// Make nameplate, health bar, and speech bubble face camera
+			const sceneData = this.getScene();
+			if (sceneData?.camera) {
+				this.nameplate.quaternion.copy(sceneData.camera.quaternion);
+				if (this.state.isTalking) {
+					this.speechBubble.quaternion.copy(sceneData.camera.quaternion);
+				}
 			}
 		}
 	}

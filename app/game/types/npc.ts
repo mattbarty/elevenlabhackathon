@@ -47,4 +47,10 @@ export interface NPCState {
 	targetEntity?: Entity;
 	currentDialogue?: string;
 	dialogueTimeout?: NodeJS.Timeout;
+	inCombat: boolean;
+	combatTarget?: Entity;
+	attackAnimationTime: number;
+	isDead: boolean;
+	deathTime: number;
+	deathAnimationComplete: boolean;
 }

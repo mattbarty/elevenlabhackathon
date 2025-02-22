@@ -940,6 +940,25 @@ export default function GameWorld() {
                 </button>
               </div>
             </div>
+
+            {/* Combat Actions */}
+            <div className="col-span-2 space-y-2">
+              <h4 className="font-semibold text-sm">Combat Actions</h4>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded text-sm"
+                  onClick={() => {
+                    const nearestNPC = selectedNPC.getNPCsByDistance()[0]?.entity;
+                    if (nearestNPC) {
+                      selectedNPC.engageInCombat(nearestNPC);
+                    }
+                  }}
+                >
+                  Attack nearest NPC
+                </button>
+              </div>
+            </div>
+
           </div>
 
           <p className="text-sm text-gray-300 mt-2">Right-click anywhere to make the NPC move there</p>
