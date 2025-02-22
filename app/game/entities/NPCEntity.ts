@@ -4,6 +4,10 @@ import { NPCConfig, NPCProfession, NPCState } from '../types/npc';
 import { HealthComponent } from '../components/HealthComponent';
 import { HealthBarComponent } from '../components/HealthBarComponent';
 import { createPawnVisuals, createRookVisuals } from './ChessPieceVisuals';
+import { ResourceEntity } from './ResourceEntity';
+import { ResourceType } from '../types/resources';
+import { EntityManager } from '../core/EntityManager';
+import { PlayerEntity } from './PlayerEntity';
 
 export class NPCEntity extends Entity {
 	private name: string;
@@ -393,5 +397,90 @@ export class NPCEntity extends Entity {
 				}
 			}
 		});
+	}
+
+	private getEntitiesByDistance<T extends Entity>(
+		filter: (entity: Entity) => entity is T,
+		excludeSelf: boolean = true
+	): Array<{ entity: T; distance: number }> {
+		const entityManager = EntityManager.getInstance();
+		const entities = entityManager
+			.getAllEntities()
+			.filter(filter)
+			.filter((entity) => !excludeSelf || entity.getId() !== this.getId())
+			.map((entity) => ({
+				entity,
+				distance: this.transform.position.distanceTo(
+					entity.getTransform().position
+				),
+			}));
+
+		return entities.sort((a, b) => a.distance - b.distance);
+	}
+
+	public getResourcesByDistance(
+		type?: ResourceType
+	): Array<{ entity: ResourceEntity; distance: number }> {
+		return this.getEntitiesByDistance(
+			(entity): entity is ResourceEntity =>
+				entity instanceof ResourceEntity && (!type || entity.getType() === type)
+		);
+	}
+
+	public getNPCsByDistance(options?: {
+		profession?: NPCProfession;
+		name?: string;
+	}): Array<{ entity: NPCEntity; distance: number }> {
+		return this.getEntitiesByDistance((entity): entity is NPCEntity => {
+			if (!(entity instanceof NPCEntity)) return false;
+			if (options?.profession && entity.getProfession() !== options.profession)
+				return false;
+			if (options?.name && entity.getName() !== options.name) return false;
+			return true;
+		});
+	}
+
+	public getCharactersByDistance(
+		includingPlayer: boolean = true
+	): Array<{ entity: Entity; distance: number }> {
+		return this.getEntitiesByDistance(
+			(entity): entity is Entity =>
+				entity instanceof NPCEntity ||
+				(includingPlayer && entity instanceof PlayerEntity)
+		);
+	}
+
+	// Movement methods using the new sorted arrays
+	public moveToNearestResource(type?: ResourceType): void {
+		const resources = this.getResourcesByDistance(type);
+		if (resources.length > 0) {
+			this.MoveTo(resources[0].entity.getTransform().position);
+		}
+	}
+
+	public moveToFurthestResource(type?: ResourceType): void {
+		const resources = this.getResourcesByDistance(type);
+		if (resources.length > 0) {
+			this.MoveTo(
+				resources[resources.length - 1].entity.getTransform().position
+			);
+		}
+	}
+
+	public moveToNearestCharacter(includingPlayer: boolean = true): void {
+		const characters = this.getCharactersByDistance(includingPlayer);
+		if (characters.length > 0) {
+			this.MoveTo(characters[0].entity.getTransform().position);
+		}
+	}
+
+	public moveToNearestNPC(options?: {
+		profession?: NPCProfession;
+		name?: string;
+	}): void {
+		const npcs = this.getNPCsByDistance(options);
+		if (npcs.length > 0) {
+			this.MoveTo(npcs[0].entity.getTransform().position);
+		}
 	}
 }
