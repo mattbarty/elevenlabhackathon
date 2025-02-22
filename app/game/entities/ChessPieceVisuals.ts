@@ -99,7 +99,7 @@ export function createKingVisuals(): THREE.Group {
 	const eyes = createEyes({
 		size: 0.05,
 		yPosition: 1.3,
-		zOffset: 0.22,
+		zOffset: -0.22,
 		spacing: 0.24,
 	});
 	group.add(eyes);
