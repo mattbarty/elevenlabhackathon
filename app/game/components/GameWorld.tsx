@@ -17,20 +17,36 @@ function createTree(height: number = 2): THREE.Group {
 
   // Create trunk with slight random variation
   const trunkHeight = height * 0.4;
-  const trunkRadius = 0.1 + Math.random() * 0.05;
+  const trunkRadius = 0.1 + (height * 0.05); // Thicker trunk for taller trees
   const trunkGeometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius * 1.5, trunkHeight, 5);
+
+  // Create trunk material with natural color variation
+  const trunkHue = 0.25 + (Math.random() * 0.1); // Range around green-brown
+  const trunkSaturation = 0.3 + (Math.random() * 0.2);
+  const trunkLightness = 0.25 + (Math.random() * 0.1);
+  const trunkColor = new THREE.Color().setHSL(trunkHue, trunkSaturation, trunkLightness);
+
   const trunkMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(0x4a5f39).multiplyScalar(0.8 + Math.random() * 0.4)
+    color: trunkColor,
+    roughness: 0.8 + Math.random() * 0.2
   });
   const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
   trunk.position.y = trunkHeight * 0.5;
 
   // Create leaves with variation
   const leavesHeight = height * 0.8;
-  const leavesRadius = 0.4 + Math.random() * 0.2;
+  const leavesRadius = 0.3 + (height * 0.15); // Wider canopy for taller trees
   const leavesGeometry = new THREE.ConeGeometry(leavesRadius, leavesHeight, 6);
+
+  // Create leaves material with natural color variation
+  const leafHue = 0.3 + (Math.random() * 0.1); // Range around green
+  const leafSaturation = 0.4 + (Math.random() * 0.3);
+  const leafLightness = 0.3 + (Math.random() * 0.2);
+  const leafColor = new THREE.Color().setHSL(leafHue, leafSaturation, leafLightness);
+
   const leavesMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(0x5a7c45).multiplyScalar(0.8 + Math.random() * 0.4)
+    color: leafColor,
+    roughness: 0.6 + Math.random() * 0.2
   });
   const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
   leaves.position.y = trunkHeight * 0.8 + leavesHeight * 0.5;
@@ -437,8 +453,8 @@ export default function GameWorld() {
     // Initialize resource manager and create resources
     const resourceManager = ResourceManager.getInstance();
 
-    // Create tree clusters
-    const numClusters = 5;
+    // Create tree clusters (reduced number)
+    const numClusters = 3;
     for (let i = 0; i < numClusters; i++) {
       const angle = (i / numClusters) * Math.PI * 2 + Math.random() * 0.5;
       const radius = 8 + Math.random() * 15;
@@ -451,18 +467,30 @@ export default function GameWorld() {
       // Create trees and stones in cluster
       const { treePositions, stonePositions } = createTreeCluster(clusterCenter, 5, 8);
 
-      // Create trees
+      // Create trees in cluster
       for (const position of treePositions) {
-        const height = 1.5 + Math.random(); // Random height between 1.5 and 2.5
+        // Calculate tree health based on random factors
+        const baseHealth = 100;
+        const healthVariation = Math.random() * 50;
+        const health = baseHealth + healthVariation;
+
+        // Calculate tree height based on health
+        const minHeight = 1.5;
+        const maxHeight = 3.0;
+        const heightRange = maxHeight - minHeight;
+        const healthRange = 50;
+        const height = minHeight + (heightRange * (healthVariation / healthRange));
+
         const tree = resourceManager.createResource({
           type: ResourceType.TREE,
           position: position,
           properties: {
-            maxHealth: 100 + Math.random() * 50,
+            maxHealth: health,
           }
         });
         const treeMesh = tree.getMesh();
         if (treeMesh !== null) {
+          treeMesh.scale.setScalar(height / 2);
           scene.add(treeMesh);
         }
         tree.setScene(scene);
@@ -485,8 +513,43 @@ export default function GameWorld() {
       }
     }
 
-    // Create rock formations
-    const numFormations = 3;
+    // Create scattered individual trees
+    const numScatteredTrees = 20;
+    for (let i = 0; i < numScatteredTrees; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 5 + Math.random() * 20; // Wider distribution
+      const position = new THREE.Vector3(
+        Math.cos(angle) * radius,
+        0,
+        Math.sin(angle) * radius
+      );
+
+      // Add some random offset to break up the circular pattern
+      position.x += (Math.random() - 0.5) * 5;
+      position.z += (Math.random() - 0.5) * 5;
+
+      const baseHealth = 100;
+      const healthVariation = Math.random() * 50;
+      const health = baseHealth + healthVariation;
+      const height = 1.5 + (1.5 * (healthVariation / 50));
+
+      const tree = resourceManager.createResource({
+        type: ResourceType.TREE,
+        position: position,
+        properties: {
+          maxHealth: health,
+        }
+      });
+      const treeMesh = tree.getMesh();
+      if (treeMesh !== null) {
+        treeMesh.scale.setScalar(height / 2);
+        scene.add(treeMesh);
+      }
+      tree.setScene(scene);
+    }
+
+    // Create rock formations (reduced number)
+    const numFormations = 2;
     for (let i = 0; i < numFormations; i++) {
       const angle = (i / numFormations) * Math.PI * 2 + Math.random();
       const radius = 10 + Math.random() * 15;
@@ -496,7 +559,6 @@ export default function GameWorld() {
         Math.sin(angle) * radius
       );
 
-      // Create rocks in formation
       const rocks = createRockFormation(formationCenter, 4);
       for (const rock of rocks) {
         const stone = resourceManager.createResource({
@@ -515,6 +577,43 @@ export default function GameWorld() {
         }
         stone.setScene(scene);
       }
+    }
+
+    // Create scattered individual rocks
+    const numScatteredRocks = 15;
+    for (let i = 0; i < numScatteredRocks; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 5 + Math.random() * 20;
+      const position = new THREE.Vector3(
+        Math.cos(angle) * radius,
+        0,
+        Math.sin(angle) * radius
+      );
+
+      // Add random offset to break up the circular pattern
+      position.x += (Math.random() - 0.5) * 5;
+      position.z += (Math.random() - 0.5) * 5;
+
+      // Determine rock size with bias towards smaller rocks
+      const sizeRoll = Math.random();
+      const size = sizeRoll < 0.6 ? 'small' :
+        sizeRoll < 0.9 ? 'medium' :
+          'large';
+
+      const stone = resourceManager.createResource({
+        type: ResourceType.STONE,
+        position: position,
+        properties: {
+          maxHealth: size === 'large' ? 400 + Math.random() * 100 :
+            size === 'medium' ? 250 + Math.random() * 100 :
+              150 + Math.random() * 50,
+        }
+      });
+      const stoneMesh = stone.getMesh();
+      if (stoneMesh !== null) {
+        scene.add(stoneMesh);
+      }
+      stone.setScene(scene);
     }
 
     // Create player with stylized look
