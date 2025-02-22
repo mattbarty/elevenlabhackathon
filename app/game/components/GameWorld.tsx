@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { PlayerEntity } from '../entities/PlayerEntity';
@@ -9,6 +9,7 @@ import { ResourceManager } from '../managers/ResourceManager';
 import { ResourceType } from '../types/resources';
 import { GameGUI } from './GameGUI';
 import { useGameContext } from '../context/GameContext';
+import { ResourceEntity } from '../entities/ResourceEntity';
 
 // Helper function to create a stylized tree
 function createTree(height: number = 2): THREE.Group {
@@ -83,6 +84,141 @@ export default function GameWorld() {
   const directionalLightRef = useRef<THREE.DirectionalLight | null>(null);
 
   const gameContext = useGameContext();
+
+  // Handle resource targeting
+  const handleClick = useCallback((event: MouseEvent) => {
+    if (!containerRef.current || !sceneRef.current || !cameraRef.current) return;
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    // Calculate mouse position in normalized device coordinates (-1 to +1)
+    const rect = containerRef.current.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    // Update the picking ray with the camera and mouse position
+    raycaster.setFromCamera(mouse, cameraRef.current);
+
+    // Get all resources and their meshes
+    const resources = entityManagerRef.current
+      .getAllEntities()
+      .filter((entity): entity is ResourceEntity => entity instanceof ResourceEntity);
+
+    const resourceObjects = resources
+      .map(resource => resource.getMesh())
+      .filter((obj): obj is THREE.Mesh | THREE.Group => obj !== null);
+
+    // Find intersections with all meshes
+    const intersects = raycaster.intersectObjects(resourceObjects, true);
+
+    if (intersects.length > 0) {
+      // Find the resource that owns this mesh by traversing up the parent chain
+      const clickedObject = intersects[0].object;
+      let targetObject = clickedObject;
+
+      // Traverse up to find the top-level mesh/group
+      while (targetObject.parent && !(targetObject.parent instanceof THREE.Scene)) {
+        targetObject = targetObject.parent;
+      }
+
+      const clickedResource = resources.find(resource => resource.getMesh() === targetObject);
+
+      if (clickedResource) {
+        // Update previously targeted resource
+        if (gameContext.targetedEntity !== null) {
+          const prevResource = resources.find(r => r.getId() === gameContext.targetedEntity);
+          if (prevResource) {
+            prevResource.setTargeted(false);
+          }
+        }
+
+        // Set new target
+        clickedResource.setTargeted(true);
+        gameContext.setTargetedEntity(clickedResource.getId());
+      }
+    } else {
+      // Clear target when clicking empty space
+      if (gameContext.targetedEntity !== null) {
+        const prevResource = resources.find(r => r.getId() === gameContext.targetedEntity);
+        if (prevResource) {
+          prevResource.setTargeted(false);
+        }
+        gameContext.setTargetedEntity(null);
+      }
+    }
+  }, [gameContext]);
+
+  // Handle resource hover effects
+  const handleMouseMove = useCallback((event: MouseEvent) => {
+    if (!containerRef.current || !sceneRef.current || !cameraRef.current) return;
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    // Calculate mouse position in normalized device coordinates (-1 to +1)
+    const rect = containerRef.current.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    // Update the picking ray with the camera and mouse position
+    raycaster.setFromCamera(mouse, cameraRef.current);
+
+    // Get all resources and their meshes
+    const resources = entityManagerRef.current
+      .getAllEntities()
+      .filter((entity): entity is ResourceEntity => entity instanceof ResourceEntity);
+
+    const resourceObjects = resources
+      .map(resource => resource.getMesh())
+      .filter((obj): obj is THREE.Mesh | THREE.Group => obj !== null);
+
+    // Reset all resource hover states
+    resourceObjects.forEach(object => {
+      object.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+          child.material.emissive.setScalar(0);
+        }
+      });
+    });
+
+    // Find intersections with all meshes
+    const intersects = raycaster.intersectObjects(resourceObjects, true);
+
+    // Highlight hovered resource
+    if (intersects.length > 0) {
+      // Find the top-level mesh/group
+      let targetObject = intersects[0].object;
+      while (targetObject.parent && !(targetObject.parent instanceof THREE.Scene)) {
+        targetObject = targetObject.parent;
+      }
+
+      // Apply hover effect to all child meshes
+      targetObject.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+          child.material.emissive.setScalar(0.2);
+        }
+      });
+
+      containerRef.current.style.cursor = 'pointer';
+    } else {
+      containerRef.current.style.cursor = 'default';
+    }
+  }, []);
+
+  // Add event listeners
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener('click', handleClick);
+    container.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      container.removeEventListener('click', handleClick);
+      container.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [handleClick, handleMouseMove]);
 
   // Effect for handling lighting updates
   useEffect(() => {

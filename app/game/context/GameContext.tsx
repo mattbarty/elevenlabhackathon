@@ -10,6 +10,8 @@ interface GameContextType {
   lightIntensity: number;
   lightColor: THREE.Color;
   ambientIntensity: number;
+  targetedEntity: number | null;
+  setTargetedEntity: (entityId: number | null) => void;
 }
 
 const GameContext = createContext<GameContextType | null>(null);
@@ -28,6 +30,7 @@ interface GameProviderProps {
 
 export function GameProvider({ children }: GameProviderProps) {
   const [timeOfDay, setTimeOfDay] = useState(12); // Start at noon
+  const [targetedEntity, setTargetedEntity] = useState<number | null>(null);
   const TIME_SCALE = 0.0166666667; // 1 real second = 1 game minute
 
   // Calculate time period and lighting based on time of day
@@ -77,8 +80,10 @@ export function GameProvider({ children }: GameProviderProps) {
       lightIntensity,
       lightColor,
       ambientIntensity,
+      targetedEntity,
+      setTargetedEntity,
     };
-  }, [timeOfDay]);
+  }, [timeOfDay, targetedEntity]);
 
   // Update time
   useEffect(() => {

@@ -14,9 +14,10 @@ export class ResourceEntity extends Entity {
 	protected properties: ResourceProperties;
 	protected healthComponent: HealthComponent;
 	protected healthBarComponent: HealthBarComponent;
-	protected mesh: THREE.Mesh | null = null;
+	protected mesh: THREE.Mesh | THREE.Group | null = null;
 	private active: boolean = true;
 	private respawnTimeout: NodeJS.Timeout | null = null;
+	private isTargeted: boolean = false;
 
 	constructor(type: ResourceType, config: ResourceEntityConfig) {
 		super({ position: config.position });
@@ -59,7 +60,7 @@ export class ResourceEntity extends Entity {
 		}
 	}
 
-	getMesh(): THREE.Mesh | null {
+	getMesh(): THREE.Mesh | THREE.Group | null {
 		return this.mesh;
 	}
 
@@ -77,10 +78,30 @@ export class ResourceEntity extends Entity {
 		}
 	}
 
+	setTargeted(targeted: boolean): void {
+		this.isTargeted = targeted;
+		this.updateHealthBarVisibility();
+	}
+
+	private updateHealthBarVisibility(): void {
+		const shouldShowHealthBar =
+			this.isTargeted ||
+			this.healthComponent.getCurrentHealth() <
+				this.healthComponent.getMaxHealth();
+
+		if (this.healthBarComponent) {
+			this.healthBarComponent.getSprite().visible =
+				this.active && shouldShowHealthBar;
+		}
+	}
+
 	update(deltaTime: number): void {
 		super.update(deltaTime);
 		if (this.active) {
-			this.healthBarComponent.update(deltaTime);
+			this.updateHealthBarVisibility();
+			if (this.healthBarComponent.getSprite().visible) {
+				this.healthBarComponent.update(deltaTime);
+			}
 		}
 	}
 
@@ -107,13 +128,34 @@ export class ResourceEntity extends Entity {
 			clearTimeout(this.respawnTimeout);
 		}
 		if (this.mesh) {
-			this.mesh.geometry.dispose();
-			if (Array.isArray(this.mesh.material)) {
-				this.mesh.material.forEach((m) => m.dispose());
-			} else {
-				this.mesh.material.dispose();
+			if (this.mesh instanceof THREE.Mesh) {
+				this.mesh.geometry.dispose();
+				if (Array.isArray(this.mesh.material)) {
+					this.mesh.material.forEach((m: THREE.Material) => m.dispose());
+				} else {
+					this.mesh.material.dispose();
+				}
+			} else if (this.mesh instanceof THREE.Group) {
+				this.mesh.traverse((child) => {
+					if (child instanceof THREE.Mesh) {
+						child.geometry.dispose();
+						if (Array.isArray(child.material)) {
+							child.material.forEach((m: THREE.Material) => m.dispose());
+						} else {
+							child.material.dispose();
+						}
+					}
+				});
 			}
 		}
 		this.healthBarComponent.cleanup();
+	}
+
+	getType(): ResourceType {
+		return this.type;
+	}
+
+	getHealthComponent(): HealthComponent {
+		return this.healthComponent;
 	}
 }
