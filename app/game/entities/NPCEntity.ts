@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import { Entity } from '../core/Entity';
-import { NPCConfig, NPCProfession, NPCState } from '../types/npc';
+import {
+	NPCConfig,
+	NPCProfession,
+	NPCState,
+	NPCCombatStats,
+	DEFAULT_COMBAT_STATS,
+} from '../types/npc';
 import { HealthComponent } from '../components/HealthComponent';
 import { HealthBarComponent } from '../components/HealthBarComponent';
 import { createPawnVisuals, createRookVisuals } from './ChessPieceVisuals';
@@ -14,9 +20,15 @@ export class NPCEntity extends Entity {
 	private profession: NPCProfession;
 	private healthComponent: HealthComponent;
 	private healthBarComponent: HealthBarComponent;
+	private combatStats: NPCCombatStats;
+	private originalColors: Map<THREE.Material, THREE.Color> = new Map();
 	private state: NPCState = {
 		isMoving: false,
 		isTalking: false,
+		isAttacking: false,
+		lastAttackTime: 0,
+		isHit: false,
+		hitRecoveryTime: 0,
 	};
 	private mesh!: THREE.Group;
 	private baseMesh!: THREE.Group;
@@ -36,10 +48,17 @@ export class NPCEntity extends Entity {
 		this.name = config.name;
 		this.profession = config.profession;
 
-		// Initialize health component
+		// Initialize combat stats
+		this.combatStats = {
+			...DEFAULT_COMBAT_STATS[this.profession],
+			...config.combatStats,
+		};
+
+		// Initialize health component with profession-based max health
+		const baseMaxHealth = this.profession === NPCProfession.GUARD ? 150 : 100;
 		this.healthComponent = new HealthComponent({
-			maxHealth: config.maxHealth ?? 100,
-			currentHealth: config.maxHealth ?? 100,
+			maxHealth: config.maxHealth ?? baseMaxHealth,
+			currentHealth: config.maxHealth ?? baseMaxHealth,
 		});
 		this.healthComponent.setEntity(this);
 
@@ -62,6 +81,19 @@ export class NPCEntity extends Entity {
 			this.profession === NPCProfession.VILLAGER
 				? createPawnVisuals()
 				: createRookVisuals();
+
+		// Store original colors before adding to mesh
+		visuals.traverse((child) => {
+			if (child instanceof THREE.Mesh) {
+				if (Array.isArray(child.material)) {
+					child.material.forEach((m) => {
+						this.originalColors.set(m, m.color.clone());
+					});
+				} else {
+					this.originalColors.set(child.material, child.material.color.clone());
+				}
+			}
+		});
 
 		// Add the visuals to the base mesh group
 		this.baseMesh.add(visuals);
@@ -324,8 +356,153 @@ export class NPCEntity extends Entity {
 		return this.baseMesh;
 	}
 
+	public takeDamage(damage: number, attacker?: Entity): void {
+		this.healthComponent.damage(damage);
+		this.updateHealthBarVisibility();
+
+		// Visual feedback
+		this.state.isHit = true;
+		this.state.hitRecoveryTime = 0;
+
+		// Apply knockback
+		if (attacker) {
+			const knockbackDirection = this.transform.position
+				.clone()
+				.sub(attacker.getTransform().position)
+				.normalize();
+			const knockback = knockbackDirection.multiplyScalar(
+				this.combatStats.knockbackForce
+			);
+			this.transform.position.add(knockback);
+			this.mesh.position.copy(this.transform.position);
+		}
+
+		// Profession-specific hurt phrases
+		const hurtPhrases =
+			this.profession === NPCProfession.GUARD
+				? [
+						'Is that all you got?',
+						"You'll regret that!",
+						"I've had worse!",
+						'Stand and fight!',
+				  ]
+				: [
+						'Help! Help!',
+						'Please, no more!',
+						'I surrender!',
+						'Guards, help me!',
+				  ];
+		this.Say(hurtPhrases[Math.floor(Math.random() * hurtPhrases.length)], 1000);
+	}
+
+	public attack(target: Entity): void {
+		const now = Date.now();
+		if (now - this.state.lastAttackTime < this.combatStats.attackInterval) {
+			return; // Still on cooldown
+		}
+
+		const distance = this.transform.position.distanceTo(
+			target.getTransform().position
+		);
+		if (distance <= this.combatStats.attackRange) {
+			this.state.isAttacking = true;
+			this.state.lastAttackTime = now;
+
+			// If target is another NPC, make them take damage
+			if (target instanceof NPCEntity) {
+				target.takeDamage(this.combatStats.damage, this);
+
+				// Profession-specific attack phrases
+				const attackPhrases =
+					this.profession === NPCProfession.GUARD
+						? [
+								'For justice!',
+								'Stand down!',
+								'In the name of the law!',
+								'Surrender now!',
+						  ]
+						: [
+								'Take that!',
+								'Leave me alone!',
+								"I don't want to do this!",
+								'Stay back!',
+						  ];
+				this.Say(
+					attackPhrases[Math.floor(Math.random() * attackPhrases.length)],
+					1000
+				);
+			}
+		}
+	}
+
 	update(deltaTime: number): void {
 		super.update(deltaTime);
+
+		// Handle hit visual feedback
+		if (this.state.isHit) {
+			this.state.hitRecoveryTime += deltaTime;
+
+			// Flash red
+			this.baseMesh.traverse((child) => {
+				if (child instanceof THREE.Mesh) {
+					if (Array.isArray(child.material)) {
+						child.material.forEach((m) => {
+							m.color.setRGB(
+								1,
+								this.state.hitRecoveryTime * 2,
+								this.state.hitRecoveryTime * 2
+							);
+						});
+					} else {
+						child.material.color.setRGB(
+							1,
+							this.state.hitRecoveryTime * 2,
+							this.state.hitRecoveryTime * 2
+						);
+					}
+				}
+			});
+
+			// Reset after 0.5 seconds
+			if (this.state.hitRecoveryTime >= 0.5) {
+				this.state.isHit = false;
+				this.state.hitRecoveryTime = 0;
+
+				// Reset to original colors
+				this.baseMesh.traverse((child) => {
+					if (child instanceof THREE.Mesh) {
+						if (Array.isArray(child.material)) {
+							child.material.forEach((m) => {
+								const originalColor = this.originalColors.get(m);
+								if (originalColor) {
+									m.color.copy(originalColor);
+								}
+							});
+						} else {
+							const originalColor = this.originalColors.get(child.material);
+							if (originalColor) {
+								child.material.color.copy(originalColor);
+							}
+						}
+					}
+				});
+			}
+		}
+
+		// Handle movement and attacking
+		if (this.state.isMoving && this.state.targetEntity) {
+			const distance = this.transform.position.distanceTo(
+				this.state.targetEntity.getTransform().position
+			);
+
+			// If within attack range and target is an NPC, attack them
+			if (
+				this.state.targetEntity instanceof NPCEntity &&
+				distance <= this.combatStats.attackRange
+			) {
+				this.attack(this.state.targetEntity);
+			}
+		}
 
 		// Handle movement if we have a target
 		if (this.state.isMoving) {
