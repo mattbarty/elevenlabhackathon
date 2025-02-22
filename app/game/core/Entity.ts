@@ -1,47 +1,20 @@
-import { Vector3, Quaternion } from 'three';
-
-let nextEntityId = 1;
-
-export interface EntityConfig {
-	position?: Vector3;
-	rotation?: Quaternion;
-	scale?: Vector3;
-}
-
-export interface Transform {
-	position: Vector3;
-	rotation: Quaternion;
-	scale: Vector3;
-}
-
-export abstract class Component {
-	protected entity: Entity | null = null;
-
-	setEntity(entity: Entity | null) {
-		this.entity = entity;
-	}
-
-	getEntity(): Entity | null {
-		return this.entity;
-	}
-
-	abstract update(deltaTime: number): void;
-}
+import { Component } from './Component';
+import { Transform, EntityConfig, TransformUtils } from './Transform';
 
 export class Entity {
 	protected readonly id: number;
 	protected components: Map<string, Component>;
 	protected transform: Transform;
+	private static nextEntityId = 1;
 
 	constructor(config: EntityConfig = {}) {
-		this.id = nextEntityId++;
+		this.id = Entity.nextEntityId++;
 		this.components = new Map();
+		this.transform = TransformUtils.createDefault();
 
-		this.transform = {
-			position: config.position || new Vector3(0, 0, 0),
-			rotation: config.rotation || new Quaternion(),
-			scale: config.scale || new Vector3(1, 1, 1),
-		};
+		if (config.position) this.transform.position.copy(config.position);
+		if (config.rotation) this.transform.rotation.copy(config.rotation);
+		if (config.scale) this.transform.scale.copy(config.scale);
 	}
 
 	getId(): number {
@@ -77,5 +50,10 @@ export class Entity {
 		for (const component of this.components.values()) {
 			component.update(deltaTime);
 		}
+	}
+
+	cleanup(): void {
+		this.components.forEach((component) => component.cleanup());
+		this.components.clear();
 	}
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { PlayerEntity } from '../entities/PlayerEntity';
+import { EntityManager } from '../core/EntityManager';
 
 // Helper function to create a stylized tree
 function createTree(height: number = 2): THREE.Group {
@@ -68,6 +69,7 @@ export default function GameWorld() {
   const controlsRef = useRef<OrbitControls | null>(null);
   const lastPlayerPosition = useRef(new THREE.Vector3());
   const isMoving = useRef(false);
+  const entityManagerRef = useRef<EntityManager>(EntityManager.getInstance());
 
   useEffect(() => {
     // Prevent double initialization
@@ -159,6 +161,7 @@ export default function GameWorld() {
       turnRate: 3,
     });
     playerRef.current = player;
+    entityManagerRef.current.addEntity(player);
 
     // Create player mesh as a proper cube
     const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -189,8 +192,10 @@ export default function GameWorld() {
       const deltaTime = (time - lastTime) / 1000;
       lastTime = time;
 
+      // Update all entities through the manager
+      entityManagerRef.current.update(deltaTime);
+
       if (playerRef.current && playerMeshRef.current) {
-        playerRef.current.update(deltaTime);
         const transform = playerRef.current.getTransform();
         playerMeshRef.current.position.copy(transform.position);
         playerMeshRef.current.quaternion.copy(transform.rotation);
@@ -245,13 +250,11 @@ export default function GameWorld() {
         cancelAnimationFrame(animationFrameRef.current);
       }
 
+      // Clean up through entity manager
+      entityManagerRef.current.cleanup();
+
       // Clean up event listeners
       window.removeEventListener('resize', handleResize);
-
-      // Clean up player
-      if (playerRef.current) {
-        playerRef.current.destroy();
-      }
 
       // Clean up Three.js resources
       if (rendererRef.current) {
