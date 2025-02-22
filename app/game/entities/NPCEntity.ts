@@ -14,7 +14,10 @@ export class NPCEntity extends Entity {
 	private profession: NPCProfession;
 	private healthComponent: HealthComponent;
 	private healthBarComponent: HealthBarComponent;
-	private state: NPCState;
+	private state: NPCState = {
+		isMoving: false,
+		isTalking: false,
+	};
 	private mesh!: THREE.Group;
 	private baseMesh!: THREE.Group;
 	private nameplate!: THREE.Sprite;
@@ -43,12 +46,6 @@ export class NPCEntity extends Entity {
 		// Initialize health bar component
 		this.healthBarComponent = new HealthBarComponent(this.healthComponent);
 		this.healthBarComponent.setEntity(this);
-
-		// Initialize state
-		this.state = {
-			isMoving: false,
-			isTalking: false,
-		};
 
 		// Create visual representation
 		this.createVisuals();
@@ -274,9 +271,15 @@ export class NPCEntity extends Entity {
 		}
 	}
 
-	public MoveTo(position: THREE.Vector3): void {
+	public MoveTo(target: THREE.Vector3 | Entity): void {
 		this.state.isMoving = true;
-		this.state.targetPosition = position.clone();
+		if (target instanceof THREE.Vector3) {
+			this.state.targetPosition = target.clone();
+			this.state.targetEntity = undefined;
+		} else {
+			this.state.targetEntity = target;
+			this.state.targetPosition = target.getTransform().position.clone();
+		}
 	}
 
 	public Say(message: string, duration: number = 3000): void {
@@ -324,28 +327,38 @@ export class NPCEntity extends Entity {
 	update(deltaTime: number): void {
 		super.update(deltaTime);
 
-		// Handle movement if we have a target position
-		if (this.state.isMoving && this.state.targetPosition) {
-			const direction = this.state.targetPosition
-				.clone()
-				.sub(this.transform.position);
-			const distance = direction.length();
+		// Handle movement if we have a target
+		if (this.state.isMoving) {
+			// Update target position if we're tracking an entity
+			if (this.state.targetEntity) {
+				this.state.targetPosition = this.state.targetEntity
+					.getTransform()
+					.position.clone();
+			}
 
-			if (distance > 0.1) {
-				// Move towards target
-				direction.normalize();
-				const moveSpeed = 2 * deltaTime;
-				const movement = direction.multiplyScalar(moveSpeed);
+			if (this.state.targetPosition) {
+				const direction = this.state.targetPosition
+					.clone()
+					.sub(this.transform.position);
+				const distance = direction.length();
 
-				this.transform.position.add(movement);
-				this.mesh.position.copy(this.transform.position);
+				if (distance > 0.1) {
+					// Move towards target
+					direction.normalize();
+					const moveSpeed = 2 * deltaTime;
+					const movement = direction.multiplyScalar(moveSpeed);
 
-				// Rotate to face movement direction
-				this.mesh.lookAt(this.state.targetPosition);
-			} else {
-				// Reached target
-				this.state.isMoving = false;
-				this.state.targetPosition = undefined;
+					this.transform.position.add(movement);
+					this.mesh.position.copy(this.transform.position);
+
+					// Rotate to face movement direction
+					this.mesh.lookAt(this.state.targetPosition);
+				} else {
+					// Reached target
+					this.state.isMoving = false;
+					this.state.targetPosition = undefined;
+					this.state.targetEntity = undefined;
+				}
 			}
 		}
 
@@ -454,23 +467,50 @@ export class NPCEntity extends Entity {
 	public moveToNearestResource(type?: ResourceType): void {
 		const resources = this.getResourcesByDistance(type);
 		if (resources.length > 0) {
-			this.MoveTo(resources[0].entity.getTransform().position);
+			this.MoveTo(resources[0].entity);
+			console.log(
+				`${this.name} moving to nearest ${
+					type || 'resource'
+				} (${resources[0].distance.toFixed(2)} units away)`
+			);
+		} else {
+			console.log(`${this.name} found no ${type || 'resources'} nearby`);
 		}
 	}
 
 	public moveToFurthestResource(type?: ResourceType): void {
 		const resources = this.getResourcesByDistance(type);
 		if (resources.length > 0) {
-			this.MoveTo(
-				resources[resources.length - 1].entity.getTransform().position
+			this.MoveTo(resources[resources.length - 1].entity);
+			console.log(
+				`${this.name} moving to furthest ${type || 'resource'} (${resources[
+					resources.length - 1
+				].distance.toFixed(2)} units away)`
 			);
+		} else {
+			console.log(`${this.name} found no ${type || 'resources'} nearby`);
 		}
 	}
 
 	public moveToNearestCharacter(includingPlayer: boolean = true): void {
 		const characters = this.getCharactersByDistance(includingPlayer);
 		if (characters.length > 0) {
-			this.MoveTo(characters[0].entity.getTransform().position);
+			this.MoveTo(characters[0].entity);
+			const targetName =
+				characters[0].entity instanceof PlayerEntity
+					? 'Player'
+					: characters[0].entity instanceof NPCEntity
+					? characters[0].entity.getName()
+					: 'Unknown';
+			console.log(
+				`${
+					this.name
+				} moving to nearest character (${targetName}, ${characters[0].distance.toFixed(
+					2
+				)} units away)`
+			);
+		} else {
+			console.log(`${this.name} found no other characters nearby`);
 		}
 	}
 
@@ -480,7 +520,26 @@ export class NPCEntity extends Entity {
 	}): void {
 		const npcs = this.getNPCsByDistance(options);
 		if (npcs.length > 0) {
-			this.MoveTo(npcs[0].entity.getTransform().position);
+			this.MoveTo(npcs[0].entity);
+			const targetDesc = options?.name
+				? `NPC named ${options.name}`
+				: options?.profession
+				? `${options.profession}`
+				: 'NPC';
+			console.log(
+				`${
+					this.name
+				} moving to nearest ${targetDesc} (${npcs[0].entity.getName()}, ${npcs[0].distance.toFixed(
+					2
+				)} units away)`
+			);
+		} else {
+			const searchDesc = options?.name
+				? `NPC named ${options.name}`
+				: options?.profession
+				? `${options.profession}`
+				: 'other NPCs';
+			console.log(`${this.name} found no ${searchDesc} nearby`);
 		}
 	}
 }
