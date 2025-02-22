@@ -11,42 +11,177 @@ import { GameGUI } from './GameGUI';
 import { useGameContext } from '../context/GameContext';
 import { ResourceEntity } from '../entities/ResourceEntity';
 
-// Helper function to create a stylized tree
+// Helper function to create a stylized tree with varying size
 function createTree(height: number = 2): THREE.Group {
   const tree = new THREE.Group();
 
-  // Create trunk
-  const trunkGeometry = new THREE.CylinderGeometry(0.1, 0.15, height * 0.4, 5);
-  const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x4a5f39 });
+  // Create trunk with slight random variation
+  const trunkHeight = height * 0.4;
+  const trunkRadius = 0.1 + Math.random() * 0.05;
+  const trunkGeometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius * 1.5, trunkHeight, 5);
+  const trunkMaterial = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(0x4a5f39).multiplyScalar(0.8 + Math.random() * 0.4)
+  });
   const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-  trunk.position.y = height * 0.2;
+  trunk.position.y = trunkHeight * 0.5;
 
-  // Create leaves
-  const leavesGeometry = new THREE.ConeGeometry(0.5, height, 4);
-  const leavesMaterial = new THREE.MeshStandardMaterial({ color: 0x5a7c45 });
+  // Create leaves with variation
+  const leavesHeight = height * 0.8;
+  const leavesRadius = 0.4 + Math.random() * 0.2;
+  const leavesGeometry = new THREE.ConeGeometry(leavesRadius, leavesHeight, 6);
+  const leavesMaterial = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(0x5a7c45).multiplyScalar(0.8 + Math.random() * 0.4)
+  });
   const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
-  leaves.position.y = height * 0.6;
+  leaves.position.y = trunkHeight * 0.8 + leavesHeight * 0.5;
+
+  // Add slight random rotation for variety
+  tree.rotation.y = Math.random() * Math.PI * 2;
+  tree.rotation.x = (Math.random() - 0.5) * 0.2;
+  tree.rotation.z = (Math.random() - 0.5) * 0.2;
 
   tree.add(trunk);
   tree.add(leaves);
   return tree;
 }
 
-// Helper function to create a stylized rock
-function createRock(): THREE.Mesh {
-  const geometry = new THREE.IcosahedronGeometry(0.5, 0);
+// Helper function to create a stylized rock with more variety
+function createRock(size: 'small' | 'medium' | 'large' | 'landmark' = 'medium'): THREE.Mesh {
+  const sizeScales = {
+    small: { base: 0.3, variation: 0.1 },
+    medium: { base: 0.6, variation: 0.2 },
+    large: { base: 1.2, variation: 0.4 },
+    landmark: { base: 2.5, variation: 0.5 }
+  };
+
+  const scale = sizeScales[size];
+  const baseSize = scale.base + Math.random() * scale.variation;
+
+  // Use different geometry types for variety
+  let geometry;
+  const rockType = Math.random();
+  if (rockType < 0.4) {
+    // Rough boulder
+    geometry = new THREE.IcosahedronGeometry(baseSize, size === 'landmark' ? 2 : 1);
+  } else if (rockType < 0.7) {
+    // Angular rock
+    geometry = new THREE.OctahedronGeometry(baseSize, size === 'landmark' ? 1 : 0);
+  } else {
+    // Smooth rock
+    geometry = new THREE.SphereGeometry(baseSize, size === 'landmark' ? 6 : 4, size === 'landmark' ? 6 : 4);
+  }
+
   const material = new THREE.MeshStandardMaterial({
-    color: 0xcccccc,
-    roughness: 0.8
+    color: new THREE.Color(0x808080).multiplyScalar(0.8 + Math.random() * 0.4),
+    roughness: 0.7 + Math.random() * 0.3,
+    metalness: 0.1 + Math.random() * 0.1
   });
+
   const rock = new THREE.Mesh(geometry, material);
-  rock.scale.y = 0.5;
+
+  // Apply random scaling for more natural look
+  rock.scale.x = 0.8 + Math.random() * 0.4;
+  rock.scale.y = 0.4 + Math.random() * 0.3;
+  rock.scale.z = 0.8 + Math.random() * 0.4;
+
+  // Random rotation
   rock.rotation.set(
     Math.random() * Math.PI,
     Math.random() * Math.PI,
     Math.random() * Math.PI
   );
+
   return rock;
+}
+
+// Helper function to create a tree cluster
+function createTreeCluster(centerPos: THREE.Vector3, radius: number, density: number): {
+  treePositions: THREE.Vector3[];
+  stonePositions: Array<{ position: THREE.Vector3; size: 'small' | 'medium'; }>;
+} {
+  const treePositions: THREE.Vector3[] = [];
+  const stonePositions: Array<{ position: THREE.Vector3; size: 'small' | 'medium'; }> = [];
+  const numTrees = Math.floor(5 + Math.random() * density);
+
+  // Create trees
+  for (let i = 0; i < numTrees; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = Math.pow(Math.random(), 0.5) * radius;
+    const offset = new THREE.Vector3(
+      Math.cos(angle) * distance,
+      0,
+      Math.sin(angle) * distance
+    );
+    const position = centerPos.clone().add(offset);
+    treePositions.push(position);
+  }
+
+  // Add some stones to the forest (20% chance per cluster)
+  if (Math.random() < 0.2) {
+    const numStones = 1 + Math.floor(Math.random() * 3); // 1-3 stones
+    for (let i = 0; i < numStones; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Math.random() * radius * 0.8; // Keep stones within 80% of cluster radius
+      const position = centerPos.clone().add(
+        new THREE.Vector3(
+          Math.cos(angle) * distance,
+          0,
+          Math.sin(angle) * distance
+        )
+      );
+      stonePositions.push({
+        position,
+        size: Math.random() < 0.7 ? 'small' : 'medium'
+      });
+    }
+  }
+
+  return { treePositions, stonePositions };
+}
+
+// Helper function to create a rock formation
+function createRockFormation(centerPos: THREE.Vector3, radius: number): { position: THREE.Vector3; size: 'small' | 'medium' | 'large' | 'landmark'; }[] {
+  const rocks: { position: THREE.Vector3; size: 'small' | 'medium' | 'large' | 'landmark'; }[] = [];
+
+  // Chance for a landmark rock (10% chance)
+  if (Math.random() < 0.1) {
+    rocks.push({ position: centerPos.clone(), size: 'landmark' });
+  } else {
+    // Add one large central rock
+    rocks.push({ position: centerPos.clone(), size: 'large' });
+  }
+
+  // Add medium rocks around
+  const numMedium = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < numMedium; i++) {
+    const angle = (i / numMedium) * Math.PI * 2 + Math.random() * 0.5;
+    const distance = radius * (0.4 + Math.random() * 0.3);
+    const position = centerPos.clone().add(
+      new THREE.Vector3(
+        Math.cos(angle) * distance,
+        0,
+        Math.sin(angle) * distance
+      )
+    );
+    rocks.push({ position, size: 'medium' });
+  }
+
+  // Add small rocks
+  const numSmall = 4 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < numSmall; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = radius * (0.2 + Math.random() * 0.8);
+    const position = centerPos.clone().add(
+      new THREE.Vector3(
+        Math.cos(angle) * distance,
+        0,
+        Math.sin(angle) * distance
+      )
+    );
+    rocks.push({ position, size: 'small' });
+  }
+
+  return rocks;
 }
 
 // Helper function to calculate the ideal camera position behind the player
@@ -302,23 +437,28 @@ export default function GameWorld() {
     // Initialize resource manager and create resources
     const resourceManager = ResourceManager.getInstance();
 
-    // Add resources around the map
-    for (let i = 0; i < 30; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 5 + Math.random() * 20;
-      const position = new THREE.Vector3(
+    // Create tree clusters
+    const numClusters = 5;
+    for (let i = 0; i < numClusters; i++) {
+      const angle = (i / numClusters) * Math.PI * 2 + Math.random() * 0.5;
+      const radius = 8 + Math.random() * 15;
+      const clusterCenter = new THREE.Vector3(
         Math.cos(angle) * radius,
         0,
         Math.sin(angle) * radius
       );
 
-      // Create trees with 70% probability, stones with 30%
-      if (Math.random() < 0.7) {
+      // Create trees and stones in cluster
+      const { treePositions, stonePositions } = createTreeCluster(clusterCenter, 5, 8);
+
+      // Create trees
+      for (const position of treePositions) {
+        const height = 1.5 + Math.random(); // Random height between 1.5 and 2.5
         const tree = resourceManager.createResource({
           type: ResourceType.TREE,
-          position: position.clone(),
+          position: position,
           properties: {
-            maxHealth: 100 + Math.random() * 50, // Random health between 100-150
+            maxHealth: 100 + Math.random() * 50,
           }
         });
         const treeMesh = tree.getMesh();
@@ -326,12 +466,47 @@ export default function GameWorld() {
           scene.add(treeMesh);
         }
         tree.setScene(scene);
-      } else {
+      }
+
+      // Create forest stones
+      for (const stone of stonePositions) {
+        const stoneResource = resourceManager.createResource({
+          type: ResourceType.STONE,
+          position: stone.position,
+          properties: {
+            maxHealth: stone.size === 'medium' ? 200 + Math.random() * 50 : 100 + Math.random() * 50,
+          }
+        });
+        const stoneMesh = stoneResource.getMesh();
+        if (stoneMesh !== null) {
+          scene.add(stoneMesh);
+        }
+        stoneResource.setScene(scene);
+      }
+    }
+
+    // Create rock formations
+    const numFormations = 3;
+    for (let i = 0; i < numFormations; i++) {
+      const angle = (i / numFormations) * Math.PI * 2 + Math.random();
+      const radius = 10 + Math.random() * 15;
+      const formationCenter = new THREE.Vector3(
+        Math.cos(angle) * radius,
+        0,
+        Math.sin(angle) * radius
+      );
+
+      // Create rocks in formation
+      const rocks = createRockFormation(formationCenter, 4);
+      for (const rock of rocks) {
         const stone = resourceManager.createResource({
           type: ResourceType.STONE,
-          position: position.clone(),
+          position: rock.position,
           properties: {
-            maxHealth: 200 + Math.random() * 100, // Random health between 200-300
+            maxHealth: rock.size === 'landmark' ? 800 + Math.random() * 200 :
+              rock.size === 'large' ? 400 + Math.random() * 100 :
+                rock.size === 'medium' ? 250 + Math.random() * 100 :
+                  150 + Math.random() * 50,
           }
         });
         const stoneMesh = stone.getMesh();
