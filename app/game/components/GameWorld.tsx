@@ -10,6 +10,8 @@ import { ResourceType } from '../types/resources';
 import { GameGUI } from './GameGUI';
 import { useGameContext } from '../context/GameContext';
 import { ResourceEntity } from '../entities/ResourceEntity';
+import { NPCEntity } from '../entities/NPCEntity';
+import { NPCProfession } from '../types/npc';
 
 // Helper function to create a stylized tree with varying size
 function createTree(height: number = 2): THREE.Group {
@@ -233,10 +235,11 @@ export default function GameWorld() {
   const TIME_SCALE = 0.1; // 1 game hour = 10 real seconds
   const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
   const directionalLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const [selectedNPC, setSelectedNPC] = useState<NPCEntity | null>(null);
 
   const gameContext = useGameContext();
 
-  // Handle resource targeting
+  // Update handleClick to handle NPC selection
   const handleClick = useCallback((event: MouseEvent) => {
     if (!containerRef.current || !sceneRef.current || !cameraRef.current) return;
 
@@ -251,54 +254,105 @@ export default function GameWorld() {
     // Update the picking ray with the camera and mouse position
     raycaster.setFromCamera(mouse, cameraRef.current);
 
-    // Get all resources and their meshes
-    const resources = entityManagerRef.current
+    // Get all entities that can be targeted
+    const entities = entityManagerRef.current
       .getAllEntities()
-      .filter((entity): entity is ResourceEntity => entity instanceof ResourceEntity);
+      .filter((entity): entity is (ResourceEntity | NPCEntity) =>
+        entity instanceof ResourceEntity || entity instanceof NPCEntity
+      );
 
-    const resourceObjects = resources
-      .map(resource => resource.getMesh())
-      .filter((obj): obj is THREE.Mesh | THREE.Group => obj !== null);
+    // Get all meshes that can be targeted
+    const targetableMeshes = entities
+      .map(entity => {
+        const mesh = entity instanceof ResourceEntity ? entity.getMesh() : (entity as NPCEntity).getMesh();
+        if (mesh) {
+          // Store the entity reference on the mesh for later lookup
+          (mesh as any).entity = entity;
+        }
+        return mesh;
+      })
+      .filter((obj): obj is THREE.Group | THREE.Mesh => obj !== null);
 
-    // Find intersections with all meshes
-    const intersects = raycaster.intersectObjects(resourceObjects, true);
+    // Find intersections with meshes and their children
+    const intersects = raycaster.intersectObjects([...targetableMeshes], true);
 
     if (intersects.length > 0) {
-      // Find the resource that owns this mesh by traversing up the parent chain
-      const clickedObject = intersects[0].object;
-      let targetObject = clickedObject;
+      // Find the entity that owns this mesh
+      let targetObject: THREE.Object3D | null = intersects[0].object;
 
-      // Traverse up to find the top-level mesh/group
-      while (targetObject.parent && !(targetObject.parent instanceof THREE.Scene)) {
+      // Traverse up to find the top-level object with the entity reference
+      while (targetObject && !(targetObject as any).entity) {
         targetObject = targetObject.parent;
       }
 
-      const clickedResource = resources.find(resource => resource.getMesh() === targetObject);
+      if (targetObject && (targetObject as any).entity) {
+        const entity = (targetObject as any).entity as (ResourceEntity | NPCEntity);
 
-      if (clickedResource) {
-        // Update previously targeted resource
-        if (gameContext.targetedEntity !== null) {
-          const prevResource = resources.find(r => r.getId() === gameContext.targetedEntity);
-          if (prevResource) {
-            prevResource.setTargeted(false);
+        if (entity instanceof ResourceEntity) {
+          // Handle resource targeting as before
+          if (gameContext.targetedEntity !== null) {
+            const prevResource = entities.find(r =>
+              r instanceof ResourceEntity && r.getId() === gameContext.targetedEntity
+            ) as ResourceEntity;
+            if (prevResource) {
+              prevResource.setTargeted(false);
+            }
+          }
+          entity.setTargeted(true);
+          gameContext.setTargetedEntity(entity.getId());
+          setSelectedNPC(null);
+        } else if (entity instanceof NPCEntity) {
+          // Handle NPC selection
+          setSelectedNPC(entity);
+          if (gameContext.targetedEntity !== null) {
+            const prevResource = entities.find(r =>
+              r instanceof ResourceEntity && r.getId() === gameContext.targetedEntity
+            ) as ResourceEntity;
+            if (prevResource) {
+              prevResource.setTargeted(false);
+            }
+            gameContext.setTargetedEntity(null);
           }
         }
-
-        // Set new target
-        clickedResource.setTargeted(true);
-        gameContext.setTargetedEntity(clickedResource.getId());
       }
     } else {
-      // Clear target when clicking empty space
+      // Clear selections when clicking empty space
       if (gameContext.targetedEntity !== null) {
-        const prevResource = resources.find(r => r.getId() === gameContext.targetedEntity);
+        const prevResource = entities.find(r =>
+          r instanceof ResourceEntity && r.getId() === gameContext.targetedEntity
+        ) as ResourceEntity;
         if (prevResource) {
           prevResource.setTargeted(false);
         }
         gameContext.setTargetedEntity(null);
       }
+      setSelectedNPC(null);
     }
   }, [gameContext]);
+
+  // Add right-click handler for NPC movement
+  const handleContextMenu = useCallback((event: MouseEvent) => {
+    event.preventDefault();
+    if (!selectedNPC || !containerRef.current || !sceneRef.current || !cameraRef.current) return;
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const rect = containerRef.current.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, cameraRef.current);
+
+    // Find intersection with ground plane
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const targetPoint = new THREE.Vector3();
+    raycaster.ray.intersectPlane(groundPlane, targetPoint);
+
+    if (targetPoint) {
+      selectedNPC.MoveTo(targetPoint);
+    }
+  }, [selectedNPC]);
 
   // Handle resource hover effects
   const handleMouseMove = useCallback((event: MouseEvent) => {
@@ -364,12 +418,14 @@ export default function GameWorld() {
 
     container.addEventListener('click', handleClick);
     container.addEventListener('mousemove', handleMouseMove);
+    container.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       container.removeEventListener('click', handleClick);
       container.removeEventListener('mousemove', handleMouseMove);
+      container.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [handleClick, handleMouseMove]);
+  }, [handleClick, handleMouseMove, handleContextMenu]);
 
   // Effect for handling lighting updates
   useEffect(() => {
@@ -723,6 +779,27 @@ export default function GameWorld() {
     };
     window.addEventListener('resize', handleResize);
 
+    // Add some NPCs
+    const npcs = [
+      {
+        name: "John",
+        profession: NPCProfession.VILLAGER,
+        position: new THREE.Vector3(2, 0, 2)
+      },
+      {
+        name: "Guard Mike",
+        profession: NPCProfession.GUARD,
+        position: new THREE.Vector3(-2, 0, -2)
+      }
+    ];
+
+    npcs.forEach(npcConfig => {
+      const npc = new NPCEntity(npcConfig);
+      entityManagerRef.current.addEntity(npc);
+      scene.add(npc.getMesh());
+      npc.setScene(scene);
+    });
+
     return () => {
       // Clean up animation frame
       if (animationFrameRef.current) {
@@ -757,10 +834,31 @@ export default function GameWorld() {
     };
   }, []);
 
+  // Add debug UI for selected NPC
+  const renderDebugUI = () => {
+    if (!selectedNPC) return null;
+
+    return (
+      <div className="absolute bottom-8 right-8 bg-black/40 backdrop-blur-md rounded-lg p-4 text-white">
+        <h3 className="font-bold mb-2">Selected NPC: {selectedNPC.getName()}</h3>
+        <div className="space-y-2">
+          <button
+            className="block w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded"
+            onClick={() => selectedNPC.Say("Hello there!")}
+          >
+            Make NPC Say "Hello there!"
+          </button>
+          <p className="text-sm text-gray-300">Right-click anywhere to make the NPC move there</p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       <div ref={containerRef} className="w-full h-full" />
       <GameGUI />
+      {renderDebugUI()}
     </>
   );
 } 
