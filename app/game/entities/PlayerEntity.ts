@@ -14,13 +14,145 @@ export interface PlayerConfig extends EntityConfig {
 export class PlayerEntity extends Entity {
 	private movementComponent: PlayerMovementComponent;
 	private static readonly DEFAULT_COMMAND_RADIUS = 5; // Default radius for AOE commands
+	private static readonly MAX_SINGLE_TARGET_DISTANCE = 8; // Maximum distance for single targeting
 	private aoeIndicator: THREE.Group | null = null;
+	private targetLine: THREE.Line | null = null;
 	private currentAOERadius: number = 0;
 	private pulseTime: number = 0;
+	private isAOEMode: boolean = false; // Default to single-target mode
 
 	constructor(config: PlayerConfig = {}) {
 		super(config);
 		this.movementComponent = this.addComponent(PlayerMovementComponent);
+		// Initialize in single-target mode
+		this.updateTargetLine();
+	}
+
+	public setTargetingMode(isAOE: boolean): void {
+		this.isAOEMode = isAOE;
+		if (isAOE) {
+			this.showAOERadius(
+				this.currentAOERadius || PlayerEntity.DEFAULT_COMMAND_RADIUS
+			);
+			this.hideTargetLine();
+		} else {
+			this.showAOERadius(null);
+			this.updateTargetLine();
+		}
+	}
+
+	private hideTargetLine(): void {
+		if (this.targetLine && this.scene) {
+			this.scene.remove(this.targetLine);
+			if (this.targetLine.geometry) {
+				this.targetLine.geometry.dispose();
+			}
+			if (this.targetLine.material instanceof THREE.Material) {
+				this.targetLine.material.dispose();
+			}
+			this.targetLine = null;
+		}
+	}
+
+	private updateTargetLine(): void {
+		if (!this.scene) return;
+
+		// Remove existing line
+		this.hideTargetLine();
+
+		// Find nearest NPC
+		const nearestNPC = this.getNearestNPC();
+		if (!nearestNPC) return;
+
+		// Calculate distance
+		const distance = this.transform.position.distanceTo(
+			nearestNPC.getTransform().position
+		);
+		if (distance > PlayerEntity.MAX_SINGLE_TARGET_DISTANCE) return;
+
+		// Create line geometry
+		const points = [
+			this.transform.position.clone(),
+			nearestNPC.getTransform().position.clone(),
+		];
+		const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+		// Create line material with opacity based on distance
+		const opacity = 1 - distance / PlayerEntity.MAX_SINGLE_TARGET_DISTANCE;
+		const material = new THREE.LineBasicMaterial({
+			color: 0x00ff00,
+			transparent: true,
+			opacity: opacity * 0.6, // Make it a bit more subtle
+			depthWrite: false,
+			linewidth: 3, // Note: Due to WebGL limitations, this may not work in all browsers
+		});
+
+		// Create thicker line using multiple lines
+		const lineGroup = new THREE.Group();
+
+		// Create multiple offset lines for thickness effect
+		const offsets = [
+			new THREE.Vector3(0.02, 0, 0),
+			new THREE.Vector3(-0.02, 0, 0),
+			new THREE.Vector3(0, 0, 0.02),
+			new THREE.Vector3(0, 0, -0.02),
+		];
+
+		offsets.forEach((offset) => {
+			const offsetPoints = points.map((p) => p.clone().add(offset));
+			const offsetGeometry = new THREE.BufferGeometry().setFromPoints(
+				offsetPoints
+			);
+			const line = new THREE.Line(offsetGeometry, material);
+			lineGroup.add(line);
+		});
+
+		// Create central line
+		const centralLine = new THREE.Line(geometry, material);
+		lineGroup.add(centralLine);
+
+		this.targetLine = lineGroup as unknown as THREE.Line;
+		this.targetLine.position.y = 0.1; // Slightly above ground
+		this.scene.add(this.targetLine);
+	}
+
+	private getNearestNPC(): NPCEntity | null {
+		const npcs = EntityManager.getInstance()
+			.getAllEntities()
+			.filter((entity): entity is NPCEntity => entity instanceof NPCEntity)
+			.filter((npc) => npc.getHealthComponent().getCurrentHealth() > 0);
+
+		if (npcs.length === 0) return null;
+
+		let nearestNPC: NPCEntity | null = null;
+		let nearestDistance = Infinity;
+
+		npcs.forEach((npc) => {
+			const distance = this.transform.position.distanceTo(
+				npc.getTransform().position
+			);
+			if (distance < nearestDistance) {
+				nearestDistance = distance;
+				nearestNPC = npc;
+			}
+		});
+
+		return nearestNPC;
+	}
+
+	public getTargetedNPC(): NPCEntity | null {
+		if (this.isAOEMode) {
+			return null;
+		}
+		const nearestNPC = this.getNearestNPC();
+		if (!nearestNPC) return null;
+
+		const distance = this.transform.position.distanceTo(
+			nearestNPC.getTransform().position
+		);
+		return distance <= PlayerEntity.MAX_SINGLE_TARGET_DISTANCE
+			? nearestNPC
+			: null;
 	}
 
 	public getNPCsInRadius(
@@ -142,7 +274,7 @@ export class PlayerEntity extends Entity {
 		super.update(deltaTime);
 
 		// Update AOE indicator position and animation if it exists
-		if (this.aoeIndicator?.children?.length >= 4) {
+		if (this.aoeIndicator && this.aoeIndicator.children.length >= 4) {
 			// Always update position to match player
 			this.aoeIndicator.position.copy(this.transform.position);
 
@@ -154,7 +286,7 @@ export class PlayerEntity extends Entity {
 				if (
 					child instanceof THREE.Mesh &&
 					child.material instanceof THREE.Material &&
-					this.aoeIndicator
+					this.aoeIndicator?.children
 				) {
 					const children = this.aoeIndicator.children;
 					if (child === children[0]) {
@@ -173,6 +305,11 @@ export class PlayerEntity extends Entity {
 				}
 			});
 		}
+
+		// Update target line in single-target mode
+		if (!this.isAOEMode) {
+			this.updateTargetLine();
+		}
 	}
 
 	cleanup(): void {
@@ -187,6 +324,7 @@ export class PlayerEntity extends Entity {
 				}
 			});
 		}
+		this.hideTargetLine();
 	}
 
 	destroy(): void {

@@ -31,7 +31,11 @@ export const NPCCommandDebug: React.FC<NPCCommandDebugProps> = ({ onClose }) => 
 
     const playerEntity = entityManager.getAllEntities()
       .find((entity): entity is PlayerEntity => entity instanceof PlayerEntity);
-    setPlayer(playerEntity || null);
+    if (playerEntity) {
+      setPlayer(playerEntity);
+      // Ensure player starts in single-target mode
+      playerEntity.setTargetingMode(false);
+    }
   }, []);
 
   // Update AOE visualization when mode or radius changes
@@ -246,7 +250,12 @@ export const NPCCommandDebug: React.FC<NPCCommandDebugProps> = ({ onClose }) => 
           <input
             type="checkbox"
             checked={isAOEMode}
-            onChange={(e) => setIsAOEMode(e.target.checked)}
+            onChange={(e) => {
+              setIsAOEMode(e.target.checked);
+              if (player) {
+                player.setTargetingMode(e.target.checked);
+              }
+            }}
             className="form-checkbox"
           />
           <span>AOE Mode</span>
