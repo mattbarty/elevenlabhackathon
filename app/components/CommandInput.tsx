@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Command, CommandResult, ActionType, TargetType } from '../game/types/commands';
 import { EntityManager } from '../game/core/EntityManager';
 import { NPCEntity } from '../game/entities/NPCEntity';
@@ -11,16 +11,36 @@ export const CommandInput: React.FC = () => {
   const [aoeRadius, setAOERadius] = useState(5);
   const [player, setPlayer] = useState<PlayerEntity | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
-  // Initialize player reference
+  // Initialize player reference with retry mechanism
   useEffect(() => {
-    const entityManager = EntityManager.getInstance();
-    const playerEntity = entityManager.getAllEntities()
-      .find((entity): entity is PlayerEntity => entity instanceof PlayerEntity);
-    if (playerEntity) {
-      setPlayer(playerEntity);
-      playerEntity.setTargetingMode(false); // Start in single-target mode
-    }
+    let retryCount = 0;
+    const maxRetries = 10;
+    const retryInterval = 500; // 500ms between retries
+
+    const initializePlayer = () => {
+      const entityManager = EntityManager.getInstance();
+      const playerEntity = entityManager.getAllEntities()
+        .find((entity): entity is PlayerEntity => entity instanceof PlayerEntity);
+
+      if (playerEntity) {
+        setPlayer(playerEntity);
+        playerEntity.setTargetingMode(false); // Start in single-target mode
+        setIsLoading(false);
+      } else if (retryCount < maxRetries) {
+        retryCount++;
+        setTimeout(initializePlayer, retryInterval);
+      } else {
+        setError('Could not initialize player. Please refresh the page.');
+        setIsLoading(false);
+      }
+    };
+
+    initializePlayer();
   }, []);
 
   // Update targeting mode when it changes
@@ -31,12 +51,78 @@ export const CommandInput: React.FC = () => {
     }
   }, [isAOEMode, aoeRadius, player]);
 
-  const sendCommand = async () => {
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        await handleAudioTranscription(audioBlob);
+
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Failed to start recording:', err);
+      setError('Failed to access microphone');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const handleAudioTranscription = async (audioBlob: Blob) => {
+    try {
+      // Create form data with audio file
+      const formData = new FormData();
+      formData.append('audio', audioBlob);
+
+      // Send to transcription API
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to transcribe audio');
+      }
+
+      // Set the transcribed text as command input and send it
+      setCommandInput(data.text);
+      await sendCommand(data.text);
+    } catch (err) {
+      console.error('Transcription error:', err);
+      setError('Failed to transcribe audio');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
+  const sendCommand = async (text?: string) => {
     try {
       setError(null);
+      const commandToSend = text || commandInput;
 
       if (!player) {
-        throw new Error('Player not found');
+        throw new Error('Please wait for player initialization');
       }
 
       const entityManager = EntityManager.getInstance();
@@ -75,7 +161,7 @@ export const CommandInput: React.FC = () => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            command: commandInput,
+            command: commandToSend,
             context: {
               npcState: {
                 name: targetNPC.getName(),
@@ -188,9 +274,17 @@ export const CommandInput: React.FC = () => {
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send command');
-      setTimeout(() => setError(null), 3000); // Clear error after 3 seconds
+      setTimeout(() => setError(null), 3000);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white">
+        Initializing command system...
+      </div>
+    );
+  }
 
   return (
     <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-[600px] flex flex-col items-center gap-2">
@@ -221,16 +315,27 @@ export const CommandInput: React.FC = () => {
       </div>
 
       {/* Command Input */}
-      <div className="relative w-full">
+      <div className="relative w-full flex gap-2">
         <input
           type="text"
           value={commandInput}
           onChange={(e) => setCommandInput(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && sendCommand()}
           placeholder={isAOEMode ? "Enter command for all NPCs in range..." : "Enter command for targeted NPC..."}
-          className="w-full bg-black/40 backdrop-blur-sm text-white px-4 py-3 rounded-lg 
+          className="flex-1 bg-black/40 backdrop-blur-sm text-white px-4 py-3 rounded-lg 
                    border border-white/10 focus:outline-none focus:border-green-500"
+          disabled={!player}
         />
+        <button
+          onClick={isRecording ? stopRecording : startRecording}
+          className={`px-4 rounded-lg ${isRecording
+            ? 'bg-red-500 hover:bg-red-600'
+            : 'bg-blue-500 hover:bg-blue-600'
+            } text-white`}
+          disabled={!player}
+        >
+          <i className={`fas ${isRecording ? 'fa-stop' : 'fa-microphone'}`} />
+        </button>
         {error && (
           <div className="absolute -top-8 left-0 right-0 bg-red-500/90 text-white px-3 py-1 rounded text-sm text-center">
             {error}
