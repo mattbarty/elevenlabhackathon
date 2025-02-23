@@ -280,31 +280,52 @@ export const CommandInput: React.FC = () => {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white">
-        Initializing command system...
-      </div>
-    );
-  }
-
   return (
-    <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-[600px] flex flex-col items-center gap-2">
-      {/* Mode Toggle */}
-      <div className="flex items-center gap-4 bg-black/40 backdrop-blur-sm rounded-lg px-4 py-2">
+    <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 w-[600px] flex flex-col items-center gap-6">
+      {/* Error Message */}
+      {error && (
+        <div className="absolute -top-12 left-0 right-0">
+          <div className="bg-red-500/90 backdrop-blur-sm text-white px-4 py-2 rounded-lg text-center mx-auto max-w-md">
+            {error}
+          </div>
+        </div>
+      )}
+
+      {/* Main Microphone Button */}
+      <button
+        onClick={isRecording ? stopRecording : startRecording}
+        className={`w-24 h-24 rounded-full shadow-lg transition-all transform
+          ${isRecording
+            ? 'bg-red-500 hover:bg-red-600 scale-110'
+            : 'bg-blue-500 hover:bg-blue-600 hover:scale-105'
+          } text-white flex items-center justify-center`}
+        disabled={!player}
+      >
+        <i className={`fas ${isRecording ? 'fa-stop' : 'fa-microphone'} text-3xl`} />
+      </button>
+
+      {/* Mode Toggle - Always visible */}
+      <div className="flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-full px-2 py-1 border border-white/10">
         <button
           onClick={() => setIsAOEMode(false)}
-          className={`px-3 py-1 rounded ${!isAOEMode ? 'bg-green-500 text-white' : 'text-gray-300'}`}
+          className={`px-4 py-1.5 rounded-full transition-colors
+            ${!isAOEMode ? 'bg-green-500 text-white' : 'text-gray-300 hover:text-white'}`}
         >
           Single Target
         </button>
         <button
           onClick={() => setIsAOEMode(true)}
-          className={`px-3 py-1 rounded ${isAOEMode ? 'bg-green-500 text-white' : 'text-gray-300'}`}
+          className={`px-4 py-1.5 rounded-full transition-colors flex items-center gap-2
+            ${isAOEMode ? 'bg-green-500 text-white' : 'text-gray-300 hover:text-white'}`}
         >
-          AOE ({aoeRadius}m)
+          <span>AOE</span>
+          {isAOEMode && <span className="text-sm opacity-80">{aoeRadius}m</span>}
         </button>
-        {isAOEMode && (
+      </div>
+
+      {/* AOE Radius Slider - Show when AOE mode is active */}
+      {isAOEMode && (
+        <div className="flex items-center gap-3 bg-black/40 backdrop-blur-sm rounded-full px-4 py-2 border border-white/10">
           <input
             type="range"
             min="1"
@@ -313,39 +334,31 @@ export const CommandInput: React.FC = () => {
             onChange={(e) => setAOERadius(Number(e.target.value))}
             className="w-32"
           />
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Command Input */}
-      <div className="relative w-full flex gap-2">
-        {debugMode && (
-          <input
-            type="text"
-            value={commandInput}
-            onChange={(e) => setCommandInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && sendCommand()}
-            placeholder={isAOEMode ? "Enter command for all NPCs in range..." : "Enter command for targeted NPC..."}
-            className="flex-1 bg-black/40 backdrop-blur-sm text-white px-4 py-3 rounded-lg 
-                     border border-white/10 focus:outline-none focus:border-green-500"
-            disabled={!player}
-          />
-        )}
-        <button
-          onClick={isRecording ? stopRecording : startRecording}
-          className={`${debugMode ? 'w-auto px-4' : 'w-12 h-12'} rounded-lg ${isRecording
-            ? 'bg-red-500 hover:bg-red-600'
-            : 'bg-blue-500 hover:bg-blue-600'
-            } text-white flex items-center justify-center`}
+      {/* Debug Input - Only show in debug mode */}
+      {debugMode && (
+        <input
+          type="text"
+          value={commandInput}
+          onChange={(e) => setCommandInput(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && sendCommand()}
+          placeholder={isAOEMode ? "Enter command for all NPCs in range..." : "Enter command for targeted NPC..."}
+          className="w-full bg-black/40 backdrop-blur-sm text-white px-6 py-3 rounded-full
+                   border border-white/10 focus:outline-none focus:border-green-500
+                   placeholder:text-white/50"
           disabled={!player}
-        >
-          <i className={`fas ${isRecording ? 'fa-stop' : 'fa-microphone'}`} />
-        </button>
-        {error && (
-          <div className="absolute -top-8 left-0 right-0 bg-red-500/90 text-white px-3 py-1 rounded text-sm text-center">
-            {error}
-          </div>
-        )}
-      </div>
+        />
+      )}
+
+      {/* Loading State */}
+      {isLoading && (
+        <div className="absolute top-0 left-0 right-0 bottom-0 bg-black/40 backdrop-blur-sm
+                      flex items-center justify-center rounded-lg">
+          <div className="text-white">Initializing command system...</div>
+        </div>
+      )}
     </div>
   );
 }; 
