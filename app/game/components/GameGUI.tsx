@@ -3,7 +3,7 @@ import { useGameContext } from '../context/GameContext';
 import { TargetIndicator } from './TargetIndicator';
 
 export function GameGUI() {
-  const { timeOfDay, timePeriod } = useGameContext();
+  const { timeOfDay, timePeriod, setDebugMode, debugMode } = useGameContext();
 
   // Convert time (0-24) to formatted string (HH:MM)
   const formatTime = (time: number) => {
@@ -34,6 +34,17 @@ export function GameGUI() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Debug Toggle */}
+      <div className="absolute top-4 right-4 pointer-events-auto">
+        <button
+          onClick={() => setDebugMode(!debugMode)}
+          className={`px-3 py-1 rounded transition-colors ${debugMode ? 'bg-green-500 text-white' : 'bg-black/30 text-gray-300'
+            } hover:bg-green-600`}
+        >
+          Debug Mode
+        </button>
       </div>
 
       {/* Target Indicator */}

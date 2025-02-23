@@ -3,9 +3,11 @@ import { Command, CommandResult, ActionType, TargetType } from '../game/types/co
 import { EntityManager } from '../game/core/EntityManager';
 import { NPCEntity } from '../game/entities/NPCEntity';
 import { PlayerEntity } from '../game/entities/PlayerEntity';
+import { useGameContext } from '../game/context/GameContext';
 import * as THREE from 'three';
 
 export const CommandInput: React.FC = () => {
+  const { debugMode } = useGameContext();
   const [commandInput, setCommandInput] = useState('');
   const [isAOEMode, setIsAOEMode] = useState(false);
   const [aoeRadius, setAOERadius] = useState(5);
@@ -316,22 +318,24 @@ export const CommandInput: React.FC = () => {
 
       {/* Command Input */}
       <div className="relative w-full flex gap-2">
-        <input
-          type="text"
-          value={commandInput}
-          onChange={(e) => setCommandInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && sendCommand()}
-          placeholder={isAOEMode ? "Enter command for all NPCs in range..." : "Enter command for targeted NPC..."}
-          className="flex-1 bg-black/40 backdrop-blur-sm text-white px-4 py-3 rounded-lg 
-                   border border-white/10 focus:outline-none focus:border-green-500"
-          disabled={!player}
-        />
+        {debugMode && (
+          <input
+            type="text"
+            value={commandInput}
+            onChange={(e) => setCommandInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && sendCommand()}
+            placeholder={isAOEMode ? "Enter command for all NPCs in range..." : "Enter command for targeted NPC..."}
+            className="flex-1 bg-black/40 backdrop-blur-sm text-white px-4 py-3 rounded-lg 
+                     border border-white/10 focus:outline-none focus:border-green-500"
+            disabled={!player}
+          />
+        )}
         <button
           onClick={isRecording ? stopRecording : startRecording}
-          className={`px-4 rounded-lg ${isRecording
+          className={`${debugMode ? 'w-auto px-4' : 'w-12 h-12'} rounded-lg ${isRecording
             ? 'bg-red-500 hover:bg-red-600'
             : 'bg-blue-500 hover:bg-blue-600'
-            } text-white`}
+            } text-white flex items-center justify-center`}
           disabled={!player}
         >
           <i className={`fas ${isRecording ? 'fa-stop' : 'fa-microphone'}`} />
