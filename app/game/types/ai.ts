@@ -88,13 +88,15 @@ export const NPC_COMMAND_FUNCTIONS: GPTFunction[] = [
 	},
 	{
 		name: 'follow',
-		description: 'Follow a target NPC or player',
+		description:
+			'Follow a target NPC or player. Use "player" as targetName to follow the player.',
 		parameters: {
 			type: 'object',
 			properties: {
 				targetName: {
 					type: 'string',
-					description: 'Name of the entity to follow',
+					description:
+						'Name of the entity to follow. Use "player" to follow the player.',
 				},
 			},
 			required: ['targetName'],

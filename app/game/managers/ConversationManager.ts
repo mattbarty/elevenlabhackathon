@@ -143,7 +143,7 @@ export class ConversationManager {
 				break;
 			case 'follow':
 				if (this.context.conversationTarget) {
-					this.npc.MoveTo(this.context.conversationTarget);
+					await this.npc.startFollowing(this.context.conversationTarget);
 				}
 				break;
 			case 'stop':

@@ -254,8 +254,15 @@ export const CommandInput: React.FC = () => {
                     entity.getName() === command.target?.npcName
                   );
                 if (targetNPCEntity) {
-                  targetNPC.MoveTo(targetNPCEntity);
-                  setTimeout(() => waitForNextCommand(), 1000);
+                  await targetNPC.startFollowing(targetNPCEntity);
+                  waitForNextCommand();
+                }
+              } else if (command.target?.type === TargetType.PLAYER) {
+                const playerEntity = entityManager.getAllEntities()
+                  .find((entity): entity is PlayerEntity => entity instanceof PlayerEntity);
+                if (playerEntity) {
+                  await targetNPC.startFollowing(playerEntity);
+                  waitForNextCommand();
                 }
               }
               break;

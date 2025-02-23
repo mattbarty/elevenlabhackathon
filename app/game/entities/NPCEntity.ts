@@ -46,6 +46,9 @@ export class NPCEntity extends Entity {
 		circlingClockwise: Math.random() < 0.5,
 		lastDirectionChangeTime: 0,
 		isRunning: false,
+		isFollowing: false,
+		followTarget: undefined,
+		followDistance: 2, // Default follow distance of 2 units
 	};
 	private mesh!: THREE.Group;
 	private baseMesh!: THREE.Group;
@@ -535,6 +538,7 @@ export class NPCEntity extends Entity {
 		this.state.targetEntity = undefined;
 		this.state.inCombat = false;
 		this.state.combatTarget = undefined;
+		this.stopFollowing(); // Also stop following when Stop is called
 	}
 
 	public async Say(message: string, duration: number = 3000): Promise<void> {
@@ -913,6 +917,50 @@ export class NPCEntity extends Entity {
 				}
 			}
 
+			// Handle following behavior
+			if (this.state.isFollowing && this.state.followTarget) {
+				const target = this.state.followTarget;
+				const targetPos = target.getTransform().position;
+				const distance = this.transform.position.distanceTo(targetPos);
+
+				// Calculate position behind the target
+				// First, get the target's forward direction (assuming they're looking at their movement direction)
+				const targetForward = new THREE.Vector3();
+				if (target instanceof NPCEntity || target instanceof PlayerEntity) {
+					targetForward
+						.copy(target.getTransform().position)
+						.sub(this.transform.position)
+						.normalize();
+				}
+
+				// Calculate the desired follow position behind the target
+				const followPos = targetPos
+					.clone()
+					.sub(targetForward.multiplyScalar(this.state.followDistance));
+
+				// Only move if we're too far from the desired follow position
+				if (distance > this.state.followDistance + 0.5) {
+					// Move towards the follow position at walking speed
+					const moveDir = followPos
+						.clone()
+						.sub(this.transform.position)
+						.normalize()
+						.multiplyScalar(deltaTime * this.combatStats.walkSpeed);
+
+					this.transform.position.add(moveDir);
+
+					// Apply collision correction
+					const correction = this.checkCollisionWithNPCs();
+					this.transform.position.add(correction);
+					this.mesh.position.copy(this.transform.position);
+
+					// Look at target
+					const lookAtPos = targetPos.clone();
+					lookAtPos.y = this.transform.position.y; // Keep level
+					this.mesh.lookAt(lookAtPos);
+				}
+			}
+
 			// Handle combat behavior
 			if (this.state.inCombat && this.state.combatTarget) {
 				const target = this.state.combatTarget;
@@ -990,8 +1038,12 @@ export class NPCEntity extends Entity {
 				}
 			}
 
-			// Handle movement if we have a target and not in combat
-			if (this.state.isMoving && !this.state.inCombat) {
+			// Handle movement if we have a target and not in combat or following
+			if (
+				this.state.isMoving &&
+				!this.state.inCombat &&
+				!this.state.isFollowing
+			) {
 				// Update target position if we're tracking an entity
 				if (this.state.targetEntity) {
 					this.state.targetPosition = this.state.targetEntity
@@ -1229,5 +1281,39 @@ export class NPCEntity extends Entity {
 
 	public endConversation(): void {
 		this.conversationManager.endConversation();
+	}
+
+	public async startFollowing(target: Entity): Promise<void> {
+		// Stop any current following
+		this.stopFollowing();
+
+		// Set following state
+		this.state.isFollowing = true;
+		this.state.followTarget = target;
+		this.state.isMoving = true;
+
+		// Acknowledge the command
+		const acknowledgmentPhrases = [
+			'I will follow!',
+			'Right behind you!',
+			'Lead the way!',
+			'Following your lead!',
+			'As you wish!',
+		];
+		const randomPhrase =
+			acknowledgmentPhrases[
+				Math.floor(Math.random() * acknowledgmentPhrases.length)
+			];
+		await this.Say(randomPhrase, 2000);
+	}
+
+	public stopFollowing(): void {
+		if (this.state.isFollowing) {
+			this.state.isFollowing = false;
+			this.state.followTarget = undefined;
+			this.state.isMoving = false;
+			this.state.targetPosition = undefined;
+			this.state.targetEntity = undefined;
+		}
 	}
 }

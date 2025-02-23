@@ -120,8 +120,14 @@ export async function POST(request: Request) {
 								targetNpcName: context.npcState.name,
 								action: ActionType.FOLLOW,
 								target: {
-									type: TargetType.NPC,
-									npcName: parsedArguments.targetName,
+									type:
+										parsedArguments.targetName.toLowerCase() === 'player'
+											? TargetType.PLAYER
+											: TargetType.NPC,
+									npcName:
+										parsedArguments.targetName.toLowerCase() === 'player'
+											? undefined
+											: parsedArguments.targetName,
 								},
 							};
 							break;
