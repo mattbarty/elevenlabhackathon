@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useGameContext } from '../context/GameContext';
 import { TargetIndicator } from './TargetIndicator';
-import { NPCCommandDebug } from '../../components/NPCCommandDebug';
 
 export function GameGUI() {
   const { timeOfDay, timePeriod } = useGameContext();
-  const [showCommandDebug, setShowCommandDebug] = useState(false);
 
   // Convert time (0-24) to formatted string (HH:MM)
   const formatTime = (time: number) => {
@@ -38,25 +36,8 @@ export function GameGUI() {
         </div>
       </div>
 
-      {/* Debug Controls */}
-      <div className="absolute top-4 right-4 pointer-events-auto">
-        <button
-          onClick={() => setShowCommandDebug(!showCommandDebug)}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
-        >
-          {showCommandDebug ? 'Hide Commands' : 'Show Commands'}
-        </button>
-      </div>
-
       {/* Target Indicator */}
       <TargetIndicator />
-
-      {/* NPC Command Debug Panel */}
-      {showCommandDebug && (
-        <div className="pointer-events-auto">
-          <NPCCommandDebug onClose={() => setShowCommandDebug(false)} />
-        </div>
-      )}
     </>
   );
 } 

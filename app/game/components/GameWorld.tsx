@@ -13,6 +13,7 @@ import { ResourceEntity } from '../entities/ResourceEntity';
 import { NPCEntity } from '../entities/NPCEntity';
 import { NPCProfession } from '../types/npc';
 import { createKingVisuals } from '../entities/ChessPieceVisuals';
+import { CommandInput } from '../../components/CommandInput';
 
 // Helper function to create a stylized tree with varying size
 function createTree(height: number = 2): THREE.Group {
@@ -839,6 +840,7 @@ export default function GameWorld() {
     <>
       <div ref={containerRef} className="w-full h-full" />
       <GameGUI />
+      <CommandInput />
     </>
   );
 } 
