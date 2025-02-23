@@ -64,7 +64,10 @@ export interface NPCState {
 	circlingClockwise: boolean;
 	lastDirectionChangeTime: number;
 	isRunning: boolean;
-	isFollowing: boolean; // Whether the NPC is actively following a target
-	followTarget?: Entity; // The entity to follow
-	followDistance: number; // How far behind the target to follow
+	isFollowing: boolean;
+	followTarget?: Entity;
+	followDistance: number;
+	isWandering: boolean;
+	lastWanderTime: number;
+	wanderTarget?: THREE.Vector3;
 }

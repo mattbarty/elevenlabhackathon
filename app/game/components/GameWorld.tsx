@@ -14,6 +14,7 @@ import { NPCEntity } from '../entities/NPCEntity';
 import { NPCProfession } from '../types/npc';
 import { createKingVisuals } from '../entities/ChessPieceVisuals';
 import { CommandInput } from '../../components/CommandInput';
+import { NPCSpawner } from '../utils/npcSpawner';
 
 // Helper function to create a stylized tree with varying size
 function createTree(height: number = 2): THREE.Group {
@@ -821,22 +822,9 @@ export default function GameWorld() {
     };
     window.addEventListener('resize', handleResize);
 
-    // Add some NPCs
-    const npcs = [
-      {
-        name: "John",
-        profession: NPCProfession.VILLAGER,
-        position: new THREE.Vector3(2, 0, 2)
-      },
-      {
-        name: "Guard Mike",
-        profession: NPCProfession.GUARD,
-        position: new THREE.Vector3(-2, 0, -2)
-      }
-    ];
-
-    npcs.forEach(npcConfig => {
-      const npc = new NPCEntity(npcConfig);
+    // Add randomly generated NPCs
+    const npcs = NPCSpawner.spawnRandomNPCs(scene);
+    npcs.forEach((npc: NPCEntity) => {
       entityManagerRef.current.addEntity(npc);
       scene.add(npc.getMesh());
       npc.setScene(scene);

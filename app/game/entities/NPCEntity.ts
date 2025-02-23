@@ -23,6 +23,11 @@ export class NPCEntity extends Entity {
 	private static readonly DIRECTION_CHANGE_INTERVAL = 3.0; // Change direction every 3 seconds
 	private static readonly WOOD_GATHER_TIME = 3000; // 3 seconds to gather wood
 	private static readonly WOOD_ZONE_POSITION = new THREE.Vector3(-3, 0, 0);
+	private static readonly WANDER_RADIUS = 5; // Maximum distance to wander from current position
+	private static readonly WANDER_INTERVAL_MIN = 4; // Minimum seconds between wandering
+	private static readonly WANDER_INTERVAL_MAX = 8; // Maximum seconds between wandering
+	private static readonly WANDER_CHANCE = 0.5; // 50% chance to start wandering when idle
+	private static readonly WANDER_SPEAK_CHANCE = 0.3; // 30% chance to say something while wandering
 	private circleAngle: number = Math.random() * Math.PI * 2; // Random starting angle for circling
 	private name: string;
 	private profession: NPCProfession;
@@ -48,7 +53,10 @@ export class NPCEntity extends Entity {
 		isRunning: false,
 		isFollowing: false,
 		followTarget: undefined,
-		followDistance: 2, // Default follow distance of 2 units
+		followDistance: 2,
+		isWandering: false,
+		lastWanderTime: 0,
+		wanderTarget: undefined,
 	};
 	private mesh!: THREE.Group;
 	private baseMesh!: THREE.Group;
@@ -101,6 +109,10 @@ export class NPCEntity extends Entity {
 		this.createVisuals();
 		this.createNameplate();
 		this.createSpeechBubble();
+
+		// Initialize wandering behavior
+		this.state.lastWanderTime = 0; // Start with 0 to trigger immediate wandering
+		this.tryStartWandering(); // Try to start wandering immediately
 	}
 
 	private createVisuals(): void {
@@ -538,7 +550,9 @@ export class NPCEntity extends Entity {
 		this.state.targetEntity = undefined;
 		this.state.inCombat = false;
 		this.state.combatTarget = undefined;
-		this.stopFollowing(); // Also stop following when Stop is called
+		this.state.isWandering = false;
+		this.state.wanderTarget = undefined;
+		this.stopFollowing();
 	}
 
 	public async Say(message: string, duration: number = 3000): Promise<void> {
@@ -1044,6 +1058,21 @@ export class NPCEntity extends Entity {
 				!this.state.inCombat &&
 				!this.state.isFollowing
 			) {
+				// Try to start wandering when idle
+				this.tryStartWandering();
+
+				// Check if we've reached the wander target
+				if (this.state.isWandering && this.state.wanderTarget) {
+					const distanceToTarget = this.transform.position.distanceTo(
+						this.state.wanderTarget
+					);
+					if (distanceToTarget < 0.1) {
+						this.state.isWandering = false;
+						this.state.wanderTarget = undefined;
+						this.Stop();
+					}
+				}
+
 				// Update target position if we're tracking an entity
 				if (this.state.targetEntity) {
 					this.state.targetPosition = this.state.targetEntity
@@ -1315,5 +1344,68 @@ export class NPCEntity extends Entity {
 			this.state.targetPosition = undefined;
 			this.state.targetEntity = undefined;
 		}
+	}
+
+	private tryStartWandering(): void {
+		const now = Date.now() / 1000;
+		if (
+			!this.state.isWandering &&
+			!this.state.isMoving &&
+			!this.state.inCombat &&
+			!this.state.isFollowing &&
+			!this.state.isTalking &&
+			!this.state.isAttacking &&
+			now - this.state.lastWanderTime > this.getRandomWanderInterval() &&
+			Math.random() < NPCEntity.WANDER_CHANCE
+		) {
+			// Generate random angle and distance within WANDER_RADIUS
+			const angle = Math.random() * Math.PI * 2;
+			const distance = Math.random() * NPCEntity.WANDER_RADIUS;
+
+			// Calculate new position
+			const wanderTarget = new THREE.Vector3(
+				this.transform.position.x + Math.cos(angle) * distance,
+				0,
+				this.transform.position.z + Math.sin(angle) * distance
+			);
+
+			// Start wandering
+			this.state.isWandering = true;
+			this.state.wanderTarget = wanderTarget;
+			this.state.lastWanderTime = now;
+			this.MoveTo(wanderTarget);
+
+			// Chance to say something while starting to wander
+			if (Math.random() < NPCEntity.WANDER_SPEAK_CHANCE) {
+				const wanderPhrases =
+					this.profession === NPCProfession.GUARD
+						? [
+								'Just doing my rounds...',
+								'Keeping the area secure.',
+								'All quiet so far.',
+								'Must remain vigilant.',
+								'Patrolling the perimeter.',
+						  ]
+						: [
+								'Nice day for a walk!',
+								"Think I'll stretch my legs.",
+								"Wonder what's over there...",
+								'Just taking a stroll.',
+								'Getting some fresh air.',
+						  ];
+				this.Say(
+					wanderPhrases[Math.floor(Math.random() * wanderPhrases.length)],
+					2000
+				);
+			}
+		}
+	}
+
+	private getRandomWanderInterval(): number {
+		return (
+			NPCEntity.WANDER_INTERVAL_MIN +
+			Math.random() *
+				(NPCEntity.WANDER_INTERVAL_MAX - NPCEntity.WANDER_INTERVAL_MIN)
+		);
 	}
 }
