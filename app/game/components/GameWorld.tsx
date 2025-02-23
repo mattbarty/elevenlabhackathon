@@ -15,6 +15,9 @@ import { NPCProfession } from '../types/npc';
 import { createKingVisuals } from '../entities/ChessPieceVisuals';
 import { CommandInput } from '../../components/CommandInput';
 import { NPCSpawner } from '../utils/npcSpawner';
+import { AnvilEntity } from '../entities/AnvilEntity';
+import { AnvilModal } from './AnvilModal';
+import { Conversation } from './Conversation';
 
 // Helper function to create a stylized tree with varying size
 function createTree(height: number = 2): THREE.Group {
@@ -279,10 +282,13 @@ export default function GameWorld() {
   const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
   const directionalLightRef = useRef<THREE.DirectionalLight | null>(null);
   const [selectedNPC, setSelectedNPC] = useState<NPCEntity | null>(null);
+  const [showConversation, setShowConversation] = useState(false);
+  const [showAnvilModal, setShowAnvilModal] = useState(false);
+  const [selectedAnvil, setSelectedAnvil] = useState<AnvilEntity | null>(null);
 
   const gameContext = useGameContext();
 
-  // Update handleClick to handle NPC selection
+  // Update handleClick to handle anvil interactions
   const handleClick = useCallback((event: MouseEvent) => {
     if (!containerRef.current || !sceneRef.current || !cameraRef.current) return;
 
@@ -300,8 +306,10 @@ export default function GameWorld() {
     // Get all entities that can be targeted
     const entities = entityManagerRef.current
       .getAllEntities()
-      .filter((entity): entity is (ResourceEntity | NPCEntity) =>
-        entity instanceof ResourceEntity || entity instanceof NPCEntity
+      .filter((entity): entity is (ResourceEntity | NPCEntity | AnvilEntity) =>
+        entity instanceof ResourceEntity ||
+        entity instanceof NPCEntity ||
+        entity instanceof AnvilEntity
       );
 
     // Get all meshes that can be targeted
@@ -309,7 +317,9 @@ export default function GameWorld() {
       .map(entity => {
         const mesh = entity instanceof ResourceEntity ?
           entity.getMesh() :
-          (entity as NPCEntity).getInteractionMesh();
+          entity instanceof AnvilEntity ?
+            entity.getInteractionMesh() :
+            (entity as NPCEntity).getInteractionMesh();
         if (mesh) {
           // Store the entity reference on the mesh for later lookup
           (mesh as any).entity = entity;
@@ -331,7 +341,7 @@ export default function GameWorld() {
       }
 
       if (targetObject && (targetObject as any).entity) {
-        const entity = (targetObject as any).entity as (ResourceEntity | NPCEntity);
+        const entity = (targetObject as any).entity as (ResourceEntity | NPCEntity | AnvilEntity);
 
         // Clear previous target
         if (gameContext.targetedEntity !== null) {
@@ -342,16 +352,30 @@ export default function GameWorld() {
         }
         if (selectedNPC) {
           selectedNPC.setTargeted(false);
+          setSelectedNPC(null);
+        }
+        if (selectedAnvil) {
+          selectedAnvil.setInConversation(false);
+          setSelectedAnvil(null);
         }
 
-        // Set new target
+        // Set new target based on entity type
         if (entity instanceof ResourceEntity) {
           entity.setTargeted(true);
           gameContext.setTargetedEntity(entity.getId());
-          setSelectedNPC(null);
+          setShowConversation(false);
+          setShowAnvilModal(false);
         } else if (entity instanceof NPCEntity) {
           entity.setTargeted(true);
           setSelectedNPC(entity);
+          gameContext.setTargetedEntity(entity.getId());
+          setShowConversation(true);
+          setShowAnvilModal(false);
+        } else if (entity instanceof AnvilEntity) {
+          entity.setInConversation(true);
+          setSelectedAnvil(entity);
+          setShowAnvilModal(true);
+          setShowConversation(false);
           gameContext.setTargetedEntity(entity.getId());
         }
       }
@@ -368,8 +392,14 @@ export default function GameWorld() {
         selectedNPC.setTargeted(false);
         setSelectedNPC(null);
       }
+      if (selectedAnvil) {
+        selectedAnvil.setInConversation(false);
+        setSelectedAnvil(null);
+      }
+      setShowConversation(false);
+      setShowAnvilModal(false);
     }
-  }, [gameContext, selectedNPC]);
+  }, [gameContext, selectedNPC, selectedAnvil]);
 
   // Add right-click handler for NPC movement
   const handleContextMenu = useCallback((event: MouseEvent) => {
@@ -839,6 +869,17 @@ export default function GameWorld() {
     stoneZone.position.set(3, 0, 0);
     scene.add(stoneZone);
 
+    // Add anvil near spawn area
+    const anvil = new AnvilEntity({
+      position: new THREE.Vector3(0, 0, 5),
+      rotation: new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        -Math.PI / 4 // Rotate 45 degrees for better visibility
+      ),
+    });
+    anvil.setScene(scene);
+    entityManagerRef.current.addEntity(anvil);
+
     return () => {
       // Clean up animation frame
       if (animationFrameRef.current) {
@@ -878,6 +919,20 @@ export default function GameWorld() {
       <div ref={containerRef} className="w-full h-full" />
       <GameGUI />
       <CommandInput />
+      {showConversation && (
+        <div className="absolute bottom-40 left-1/2 transform -translate-x-1/2">
+          <Conversation />
+        </div>
+      )}
+      {showAnvilModal && (
+        <AnvilModal onClose={() => {
+          setShowAnvilModal(false);
+          if (selectedAnvil) {
+            selectedAnvil.setInConversation(false);
+            setSelectedAnvil(null);
+          }
+        }} />
+      )}
     </>
   );
-} 
+}

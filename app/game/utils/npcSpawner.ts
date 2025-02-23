@@ -22,8 +22,8 @@ export module NPCSpawner {
 		// Randomly determine number of guards (1-2)
 		const numGuards = Math.floor(Math.random() * 2) + 1;
 
-		// Randomly determine number of villagers (2-4)
-		const numVillagers = Math.floor(Math.random() * 3) + 2;
+		// Randomly determine number of villagers (2-3)
+		const numVillagers = Math.floor(Math.random() * 2) + 2;
 
 		// Spawn guards
 		for (let i = 0; i < numGuards; i++) {
