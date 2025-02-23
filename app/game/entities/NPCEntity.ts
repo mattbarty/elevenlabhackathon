@@ -341,7 +341,7 @@ export class NPCEntity extends Entity {
 		this.state.combatTarget = undefined;
 	}
 
-	public Say(message: string, duration: number = 3000): void {
+	public async Say(message: string, duration: number = 3000): Promise<void> {
 		// Clear any existing dialogue timeout
 		if (this.state.dialogueTimeout) {
 			clearTimeout(this.state.dialogueTimeout);
@@ -353,6 +353,30 @@ export class NPCEntity extends Entity {
 		// Update and show speech bubble
 		this.updateSpeechBubble(message);
 		this.speechBubble.visible = true;
+
+		// Generate and play TTS audio
+		try {
+			const response = await fetch('/api/tts', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					text: message,
+					// Use different voices based on profession
+					voiceId:
+						this.profession === NPCProfession.GUARD
+							? 'JBFqnCBsd6RMkjVDRZzb' // Deep authoritative voice for guards
+							: '2KQQugeCbzK3DlEDAYh6', // Friendly voice for villagers
+				}),
+			});
+
+			const data = await response.json();
+			if (data.audio) {
+				const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
+				await audio.play();
+			}
+		} catch (error) {
+			console.error('Failed to play TTS audio:', error);
+		}
 
 		// Clear the dialogue after duration
 		this.state.dialogueTimeout = setTimeout(() => {
