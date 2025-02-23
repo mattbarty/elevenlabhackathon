@@ -681,6 +681,7 @@ export default function GameWorld() {
       speed: 5,
       turnRate: 3,
     });
+    player.setScene(scene);
     playerRef.current = player;
     entityManagerRef.current.addEntity(player);
 
