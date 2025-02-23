@@ -260,8 +260,14 @@ export const CommandInput: React.FC = () => {
               }
               break;
 
+            case ActionType.GATHER_WOOD:
+              targetNPC.startGatheringWood();
+              waitForNextCommand();
+              break;
+
             case ActionType.STOP:
               targetNPC.Stop();
+              targetNPC.stopGatheringWood();
               waitForNextCommand();
               break;
           }

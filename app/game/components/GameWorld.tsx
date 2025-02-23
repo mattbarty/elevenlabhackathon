@@ -220,6 +220,46 @@ function calculateIdealCameraPosition(
     .add(new THREE.Vector3(0, height, 0));
 }
 
+function createResourceZone(type: 'wood' | 'stone'): THREE.Group {
+  const group = new THREE.Group();
+
+  // Create a square dirt patch
+  const groundGeometry = new THREE.PlaneGeometry(3, 3);
+  const groundMaterial = new THREE.MeshStandardMaterial({
+    color: 0x8B4513, // Brown dirt color
+    roughness: 1,
+    metalness: 0,
+  });
+  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = 0.01; // Slightly above the ground to prevent z-fighting
+  group.add(ground);
+
+  // Create floating text
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const context = canvas.getContext('2d')!;
+  context.fillStyle = '#FFFFFF';
+  context.font = 'bold 32px Arial';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(type.toUpperCase(), 128, 32);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const labelGeometry = new THREE.PlaneGeometry(2, 0.5);
+  const labelMaterial = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide,
+  });
+  const label = new THREE.Mesh(labelGeometry, labelMaterial);
+  label.position.y = 1.5; // Float above the ground
+  group.add(label);
+
+  return group;
+}
+
 export default function GameWorld() {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -801,6 +841,15 @@ export default function GameWorld() {
       scene.add(npc.getMesh());
       npc.setScene(scene);
     });
+
+    // Add resource gathering zones
+    const woodZone = createResourceZone('wood');
+    woodZone.position.set(-3, 0, 0);
+    scene.add(woodZone);
+
+    const stoneZone = createResourceZone('stone');
+    stoneZone.position.set(3, 0, 0);
+    scene.add(stoneZone);
 
     return () => {
       // Clean up animation frame

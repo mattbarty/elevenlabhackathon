@@ -14,11 +14,15 @@ import { ResourceEntity } from './ResourceEntity';
 import { ResourceType } from '../types/resources';
 import { EntityManager } from '../core/EntityManager';
 import { PlayerEntity } from './PlayerEntity';
+import { ConversationManager } from '../managers/ConversationManager';
+import { NPCDialogueConfig } from '../types/dialogue';
 
 export class NPCEntity extends Entity {
 	private static readonly COLLISION_RADIUS = 0.75; // Radius for collision detection
 	private static readonly CIRCLE_SPEED = 1.0; // Speed of circling movement
 	private static readonly DIRECTION_CHANGE_INTERVAL = 3.0; // Change direction every 3 seconds
+	private static readonly WOOD_GATHER_TIME = 3000; // 3 seconds to gather wood
+	private static readonly WOOD_ZONE_POSITION = new THREE.Vector3(-3, 0, 0);
 	private circleAngle: number = Math.random() * Math.PI * 2; // Random starting angle for circling
 	private name: string;
 	private profession: NPCProfession;
@@ -55,12 +59,22 @@ export class NPCEntity extends Entity {
 	private speechBubbleContext!: CanvasRenderingContext2D;
 	private isTargeted: boolean = false;
 	private knockbackVelocity: THREE.Vector3 = new THREE.Vector3();
+	private conversationManager: ConversationManager;
+	private dialogueConfig: NPCDialogueConfig;
+	private isGatheringWood: boolean = false;
+	private gatheringProgress: number = 0;
+	private progressBarMesh: THREE.Sprite | null = null;
 
 	constructor(config: NPCConfig) {
 		super({ position: config.position });
 
 		this.name = config.name;
 		this.profession = config.profession;
+		this.dialogueConfig = config.dialogueConfig || {};
+		this.conversationManager = new ConversationManager(
+			this,
+			this.dialogueConfig
+		);
 
 		// Initialize combat stats
 		this.combatStats = {
@@ -292,6 +306,188 @@ export class NPCEntity extends Entity {
 
 		// Update texture
 		this.speechBubbleTexture.needsUpdate = true;
+	}
+
+	private createProgressBar(): void {
+		// Create canvas for progress bar
+		const canvas = document.createElement('canvas');
+		canvas.width = 64;
+		canvas.height = 8;
+		const context = canvas.getContext('2d')!;
+
+		// Create sprite material using canvas texture
+		const texture = new THREE.Texture(canvas);
+		const spriteMaterial = new THREE.SpriteMaterial({
+			map: texture,
+			depthTest: false,
+			transparent: true,
+		});
+		this.progressBarMesh = new THREE.Sprite(spriteMaterial);
+		this.progressBarMesh.scale.set(1.5, 0.2, 1);
+		this.progressBarMesh.visible = false;
+
+		if (this.scene) {
+			this.scene.add(this.progressBarMesh);
+		}
+	}
+
+	private updateProgressBar(progress: number): void {
+		if (!this.progressBarMesh) return;
+
+		const canvas = (this.progressBarMesh.material as THREE.SpriteMaterial).map!
+			.image;
+		const context = canvas.getContext('2d')!;
+
+		// Clear canvas
+		context.clearRect(0, 0, canvas.width, canvas.height);
+
+		// Draw background
+		context.fillStyle = 'rgba(0, 0, 0, 0.5)';
+		context.fillRect(0, 0, canvas.width, canvas.height);
+
+		// Draw progress
+		context.fillStyle = '#4CAF50';
+		context.fillRect(0, 0, canvas.width * progress, canvas.height);
+
+		// Update texture
+		(this.progressBarMesh.material as THREE.SpriteMaterial).map!.needsUpdate =
+			true;
+
+		// Position above NPC
+		if (this.mesh) {
+			const position = this.mesh.position.clone();
+			position.y += 2.5;
+			this.progressBarMesh.position.copy(position);
+		}
+
+		// Make sprite face camera
+		const sceneData = this.getScene();
+		if (sceneData?.camera) {
+			this.progressBarMesh.quaternion.copy(sceneData.camera.quaternion);
+		}
+	}
+
+	public async startGatheringWood(): Promise<void> {
+		if (this.isGatheringWood) return;
+		this.isGatheringWood = true;
+
+		// Create progress bar if it doesn't exist
+		if (!this.progressBarMesh) {
+			this.createProgressBar();
+		}
+
+		// Initial acknowledgment phrases
+		const acknowledgmentPhrases = [
+			'Right away!',
+			'Yes, sir!',
+			"I'll get right on it!",
+			'Leave it to me!',
+			'Consider it done!',
+		];
+
+		// Random woodcutting phrases (for occasional use while working)
+		const woodcuttingPhrases = [
+			'I love woodcutting!',
+			'Nothing like a day in the forest.',
+			'This is good exercise!',
+			'The smell of fresh wood is wonderful.',
+			'Another tree, another day!',
+		];
+
+		// Always say an acknowledgment phrase when starting
+		const randomAcknowledgment =
+			acknowledgmentPhrases[
+				Math.floor(Math.random() * acknowledgmentPhrases.length)
+			];
+		await this.Say(randomAcknowledgment, 2000);
+
+		while (this.isGatheringWood) {
+			// Find nearest tree
+			const trees = this.getResourcesByDistance(ResourceType.TREE).filter(
+				({ entity }) => entity.getHealthComponent().getCurrentHealth() > 0
+			);
+
+			if (trees.length === 0) {
+				await this.Say('No more trees to cut!');
+				this.stopGatheringWood();
+				return;
+			}
+
+			const nearestTree = trees[0].entity;
+			const treePosition = nearestTree.getTransform().position;
+
+			// Move to tree
+			this.MoveTo(treePosition);
+
+			// Wait until close to tree
+			await new Promise<void>((resolve) => {
+				const checkDistance = setInterval(() => {
+					const distance = this.transform.position.distanceTo(treePosition);
+					if (distance < 2) {
+						clearInterval(checkDistance);
+						resolve();
+					}
+				}, 100);
+			});
+
+			if (!this.isGatheringWood) return;
+
+			// Show and update progress bar while chopping
+			if (this.progressBarMesh) {
+				this.progressBarMesh.visible = true;
+			}
+
+			// 10% chance to say something while chopping
+			if (Math.random() < 0.1) {
+				const randomPhrase =
+					woodcuttingPhrases[
+						Math.floor(Math.random() * woodcuttingPhrases.length)
+					];
+				await this.Say(randomPhrase, 2000);
+			}
+
+			// Chop the tree
+			for (let progress = 0; progress <= 1; progress += 0.1) {
+				if (!this.isGatheringWood) return;
+				this.updateProgressBar(progress);
+				await new Promise((resolve) => setTimeout(resolve, 300));
+			}
+
+			// Damage the tree
+			nearestTree.getHealthComponent().damage(20);
+
+			// Hide progress bar
+			if (this.progressBarMesh) {
+				this.progressBarMesh.visible = false;
+			}
+
+			if (!this.isGatheringWood) return;
+
+			// Move to wood zone
+			this.MoveTo(NPCEntity.WOOD_ZONE_POSITION);
+
+			// Wait until at wood zone
+			await new Promise<void>((resolve) => {
+				const checkDistance = setInterval(() => {
+					const distance = this.transform.position.distanceTo(
+						NPCEntity.WOOD_ZONE_POSITION
+					);
+					if (distance < 2) {
+						clearInterval(checkDistance);
+						resolve();
+					}
+				}, 100);
+			});
+
+			if (!this.isGatheringWood) return;
+		}
+	}
+
+	public stopGatheringWood(): void {
+		this.isGatheringWood = false;
+		if (this.progressBarMesh) {
+			this.progressBarMesh.visible = false;
+		}
 	}
 
 	setScene(scene: THREE.Scene): void {
@@ -882,6 +1078,14 @@ export class NPCEntity extends Entity {
 				}
 			}
 		});
+
+		if (this.progressBarMesh) {
+			if (this.scene) {
+				this.scene.remove(this.progressBarMesh);
+			}
+			(this.progressBarMesh.material as THREE.SpriteMaterial).map?.dispose();
+			this.progressBarMesh.material.dispose();
+		}
 	}
 
 	private getEntitiesByDistance<T extends Entity>(
@@ -913,7 +1117,7 @@ export class NPCEntity extends Entity {
 	}
 
 	public getNPCsByDistance(options?: {
-		profession?: NPCProfession;
+		profession?: string;
 		name?: string;
 	}): Array<{ entity: NPCEntity; distance: number }> {
 		return this.getEntitiesByDistance((entity): entity is NPCEntity => {
@@ -987,7 +1191,7 @@ export class NPCEntity extends Entity {
 	}
 
 	public moveToNearestNPC(options?: {
-		profession?: NPCProfession;
+		profession?: string;
 		name?: string;
 	}): void {
 		const npcs = this.getNPCsByDistance(options);
@@ -1013,5 +1217,17 @@ export class NPCEntity extends Entity {
 				: 'other NPCs';
 			console.log(`${this.name} found no ${searchDesc} nearby`);
 		}
+	}
+
+	public async handlePlayerInput(input: string, player: Entity): Promise<void> {
+		await this.conversationManager.processInput(input, player);
+	}
+
+	public isInConversation(): boolean {
+		return this.conversationManager.isInConversation();
+	}
+
+	public endConversation(): void {
+		this.conversationManager.endConversation();
 	}
 }

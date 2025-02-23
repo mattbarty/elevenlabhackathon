@@ -101,6 +101,21 @@ export const NPC_COMMAND_FUNCTIONS: GPTFunction[] = [
 		},
 	},
 	{
+		name: 'gatherWood',
+		description:
+			'Start gathering wood from trees and delivering to the wood zone',
+		parameters: {
+			type: 'object',
+			properties: {
+				continuous: {
+					type: 'boolean',
+					description: 'Whether to continue gathering wood until stopped',
+				},
+			},
+			required: ['continuous'],
+		},
+	},
+	{
 		name: 'stop',
 		description: 'Stop all current actions',
 		parameters: {

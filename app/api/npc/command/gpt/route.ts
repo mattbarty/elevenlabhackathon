@@ -126,6 +126,14 @@ export async function POST(request: Request) {
 							};
 							break;
 
+						case 'gatherWood':
+							command = {
+								targetNpcName: context.npcState.name,
+								action: ActionType.GATHER_WOOD,
+								continuous: parsedArguments.continuous,
+							};
+							break;
+
 						case 'stop':
 							command = {
 								targetNpcName: context.npcState.name,

@@ -9,6 +9,7 @@ export enum ActionType {
 	STOP = 'stop',
 	RUN = 'run',
 	WALK = 'walk',
+	GATHER_WOOD = 'gather_wood',
 }
 
 export enum TargetType {
@@ -39,6 +40,7 @@ export interface Command {
 	target?: CommandTarget; // Where/what/who to do it to
 	message?: string; // For speak commands
 	modifier?: string; // Additional qualifiers (e.g., "quickly", "slowly")
+	continuous?: boolean; // For continuous actions like gathering
 }
 
 export interface CommandValidationError {

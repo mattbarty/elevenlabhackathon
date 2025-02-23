@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Entity } from '../core/Entity';
+import { NPCDialogueConfig } from './dialogue';
 
 export enum NPCProfession {
 	VILLAGER = 'Villager',
@@ -40,6 +41,7 @@ export interface NPCConfig {
 	position?: THREE.Vector3;
 	maxHealth?: number;
 	combatStats?: Partial<NPCCombatStats>;
+	dialogueConfig?: NPCDialogueConfig;
 }
 
 export interface NPCState {
