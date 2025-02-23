@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Entity } from '../core/Entity';
 import { NPCDialogueConfig } from './dialogue';
+import { NPCNameInfo } from '../utils/nameGenerator';
 
 export enum NPCProfession {
 	VILLAGER = 'Villager',
@@ -36,7 +37,7 @@ export const DEFAULT_COMBAT_STATS: Record<NPCProfession, NPCCombatStats> = {
 };
 
 export interface NPCConfig {
-	name: string;
+	name: string | NPCNameInfo;
 	profession: NPCProfession;
 	position?: THREE.Vector3;
 	maxHealth?: number;

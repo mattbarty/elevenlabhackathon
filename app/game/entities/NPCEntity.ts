@@ -28,9 +28,13 @@ export class NPCEntity extends Entity {
 	private static readonly WANDER_INTERVAL_MAX = 8; // Maximum seconds between wandering
 	private static readonly WANDER_CHANCE = 0.5; // 50% chance to start wandering when idle
 	private static readonly WANDER_SPEAK_CHANCE = 0.3; // 30% chance to say something while wandering
+	private static readonly COMBAT_SPEAK_CHANCE = 0.15; // Reduced to 15% chance to speak during combat actions
+	private static readonly COMBAT_SPEAK_COOLDOWN = 5000; // 5 seconds cooldown between combat phrases
 	private circleAngle: number = Math.random() * Math.PI * 2; // Random starting angle for circling
 	private name: string;
 	private profession: NPCProfession;
+	private voiceId: string;
+	private isFemale: boolean;
 	private healthComponent: HealthComponent;
 	private healthBarComponent: HealthBarComponent;
 	private combatStats: NPCCombatStats;
@@ -75,11 +79,22 @@ export class NPCEntity extends Entity {
 	private isGatheringWood: boolean = false;
 	private gatheringProgress: number = 0;
 	private progressBarMesh: THREE.Sprite | null = null;
+	private lastCombatSpeechTime: number = 0;
 
 	constructor(config: NPCConfig) {
 		super({ position: config.position });
 
-		this.name = config.name;
+		// Store name info
+		if (typeof config.name === 'string') {
+			this.name = config.name;
+			this.voiceId = '2KQQugeCbzK3DlEDAYh6'; // Default voice if string name provided
+			this.isFemale = false; // Default to male if string name provided
+		} else {
+			this.name = config.name.fullName;
+			this.voiceId = config.name.voiceId;
+			this.isFemale = config.name.isFemale;
+		}
+
 		this.profession = config.profession;
 		this.dialogueConfig = config.dialogueConfig || {};
 		this.conversationManager = new ConversationManager(
@@ -575,11 +590,8 @@ export class NPCEntity extends Entity {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					text: message,
-					// Use different voices based on profession
-					voiceId:
-						this.profession === NPCProfession.GUARD
-							? 'JBFqnCBsd6RMkjVDRZzb' // Deep authoritative voice for guards
-							: '2KQQugeCbzK3DlEDAYh6', // Friendly voice for villagers
+					voiceId: this.voiceId,
+					isFemale: this.isFemale,
 				}),
 			});
 
@@ -660,22 +672,23 @@ export class NPCEntity extends Entity {
 			}
 		}
 
-		// Profession-specific hurt phrases
-		const hurtPhrases =
-			this.profession === NPCProfession.GUARD
-				? [
-						'Is that all you got?',
-						"You'll regret that!",
-						"I've had worse!",
-						'Stand and fight!',
-				  ]
-				: [
-						'Help! Help!',
-						'Please, no more!',
-						'I surrender!',
-						'Guards, help me!',
-				  ];
-		this.Say(hurtPhrases[Math.floor(Math.random() * hurtPhrases.length)], 1000);
+		// Chance-based hurt phrases
+		const now = Date.now();
+		const timeSinceCombatSpeech = now - this.lastCombatSpeechTime;
+
+		if (
+			timeSinceCombatSpeech >= NPCEntity.COMBAT_SPEAK_COOLDOWN &&
+			Math.random() < NPCEntity.COMBAT_SPEAK_CHANCE
+		) {
+			this.lastCombatSpeechTime = now;
+			const hurtPhrases =
+				this.profession === NPCProfession.GUARD
+					? ['Is that all you got?', "You'll regret that!"]
+					: ['Help! Help!', 'Guards, help me!'];
+			const phrase =
+				hurtPhrases[Math.floor(Math.random() * hurtPhrases.length)];
+			this.Say(phrase);
+		}
 	}
 
 	public engageInCombat(target: NPCEntity): void {
@@ -704,25 +717,22 @@ export class NPCEntity extends Entity {
 			if (target instanceof NPCEntity) {
 				target.takeDamage(this.combatStats.damage, this);
 
-				// Profession-specific attack phrases
-				const attackPhrases =
-					this.profession === NPCProfession.GUARD
-						? [
-								'For justice!',
-								'Stand down!',
-								'In the name of the law!',
-								'Surrender now!',
-						  ]
-						: [
-								'Take that!',
-								'Leave me alone!',
-								"I don't want to do this!",
-								'Stay back!',
-						  ];
-				this.Say(
-					attackPhrases[Math.floor(Math.random() * attackPhrases.length)],
-					1000
-				);
+				// Chance-based attack phrases
+				const timeSinceCombatSpeech = now - this.lastCombatSpeechTime;
+
+				if (
+					timeSinceCombatSpeech >= NPCEntity.COMBAT_SPEAK_COOLDOWN &&
+					Math.random() < NPCEntity.COMBAT_SPEAK_CHANCE
+				) {
+					this.lastCombatSpeechTime = now;
+					const attackPhrases =
+						this.profession === NPCProfession.GUARD
+							? ['Stand down!', 'Justice will be served!']
+							: ['Take this!', "I won't go down easily!"];
+					const phrase =
+						attackPhrases[Math.floor(Math.random() * attackPhrases.length)];
+					this.Say(phrase);
+				}
 			}
 		}
 	}
@@ -736,7 +746,7 @@ export class NPCEntity extends Entity {
 		this.state.targetEntity = undefined;
 		this.state.targetPosition = undefined;
 
-		// Say a death phrase based on profession
+		// Death phrases are always said (no chance check since it's a significant event)
 		const deathPhrases =
 			this.profession === NPCProfession.GUARD
 				? [
@@ -1407,5 +1417,13 @@ export class NPCEntity extends Entity {
 			Math.random() *
 				(NPCEntity.WANDER_INTERVAL_MAX - NPCEntity.WANDER_INTERVAL_MIN)
 		);
+	}
+
+	public getVoiceId(): string {
+		return this.voiceId;
+	}
+
+	public isFemaleNPC(): boolean {
+		return this.isFemale;
 	}
 }
